@@ -28,3 +28,18 @@ export async function runCloud(action, payload = {}) {
   if (!result.data) throw new Error('AWS ไม่ส่งข้อมูลกลับ');
   return JSON.parse(result.data);
 }
+
+/**
+ * Only the Cognito userPool can invoke account actions. The public API key
+ * cannot use runAIAccount, and the server infers wallet owner from JWT.
+ */
+export async function runAccount(action, payload = {}) {
+  if (!cloudConfigured) throw new Error('ยังไม่ได้เชื่อม AWS Backend');
+  if (!client) client = generateClient();
+  const result = await client.mutations.runAIAccount({
+    action, payload: JSON.stringify(payload)
+  }, { authMode: 'userPool' });
+  if (result.errors?.length) throw new Error(result.errors.map(e=>e.message).join(' / '));
+  if (!result.data) throw new Error('AWS ไม่ส่งข้อมูลบัญชีกลับ');
+  return JSON.parse(result.data);
+}

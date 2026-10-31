@@ -1,0 +1,16 @@
+/* Optional Cognito account and zero-balance wallet. */
+.account-panel{width:100%;grid-column:1/-1}
+.account-tabs{display:flex;gap:8px;margin:16px 0}
+.account-tabs button{border:1px solid #635975;background:#282537;color:#bcb1d0;border-radius:8px;padding:9px 14px}
+.account-tabs button.active{color:#fff;background:#554276}
+.account-form{display:flex;flex-direction:column;gap:9px;max-width:440px}
+.account-form label{font-size:12px;color:#bdb0d2}
+.account-form input{background:#191622;border:1px solid #514562;border-radius:9px;color:#fff;padding:12px;font:inherit;width:100%}
+.account-form .btn{align-self:flex-start;margin-top:8px}
+.account-profile{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:12px 0}
+.account-profile span{color:#a7ddbd}
+.account-wallet{background:#211d2c;border:1px solid #4b3c65;border-radius:12px;padding:16px;display:grid;gap:8px;margin-bottom:14px}
+.account-wallet strong{font-size:24px;color:#e7d8ff}
+.account-wallet small{color:#bdb0d3}
+.account-error{font-size:12px;color:#ffb7b7}
+.account-notice{font-size:12px;color:#b1e3c4}
