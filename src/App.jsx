@@ -115,7 +115,9 @@ export default function App({ user, signOut }) {
     if (busy) return;
     if (!text.trim() && !attachment) return;
     let prompt = text.trim() || (attachment?.type.startsWith('image/') ? 'วิเคราะห์ภาพนี้ให้หน่อย' : 'ช่วยตรวจไฟล์ที่แนบ');
-    const prior = messages.filter(x => x.role === 'user' || x.role === 'assistant').slice(-10);
+    // Shared, valid history for both Browser AI and AWS Bedrock.
+    const prior = messages.filter(x => (x.role === 'user' || x.role === 'assistant') && !x.error && typeof x.text === 'string').slice(-20);
+    while (prior.length && prior[0].role !== 'user') prior.shift();
     const attachmentName = attachment?.name || '';
     const newMessage = { role: 'user', text: prompt + (attachmentName ? '\n📎 ' + attachmentName : ''), time: Date.now() };
     setMessages(x => [...x, newMessage]);
