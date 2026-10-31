@@ -7,7 +7,9 @@ import { auth } from './auth/resource';
 import { data, runAi } from './data/resource';
 
 const backend = defineBackend({ auth, data, runAi });
-const stack = backend.createStack('run-ai-data-assets');
+// The resolver Lambda is grouped in the data stack. Co-locate its
+// DynamoDB and S3 resources to avoid cross-stack dependency cycles.
+const stack = backend.runAi.stack;
 const usageTable = new Table(stack, 'RunAiUsageAndJobs', {
   partitionKey: { name: 'pk', type: AttributeType.STRING },
   sortKey: { name: 'sk', type: AttributeType.STRING },
