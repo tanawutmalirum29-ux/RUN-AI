@@ -111,6 +111,21 @@ export default function App({ user, signOut }) {
   useEffect(() => { if (cloudConfigured) refreshQuota().catch(()=>{}); }, []);
   useEffect(() => { if (page === 'chat') chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, busy, page]);
 
+  useEffect(() => {
+    if (!cloudConfigured) return;
+    const updateWhenVisible = () => { if (document.visibilityState === 'visible') refreshQuota().catch(()=>{}); };
+    // Counts are shared by all visitors; refresh when returning to the tab.
+    window.addEventListener('focus', updateWhenVisible);
+    document.addEventListener('visibilitychange', updateWhenVisible);
+    const timer = setInterval(updateWhenVisible, 120000);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', updateWhenVisible);
+      document.removeEventListener('visibilitychange', updateWhenVisible);
+    };
+  }, []);
+
+
   const cloudReady = Boolean(cloudStatus?.configured || cloudStatus?.openrouterEnabled);
   const currentLocal = getLocalModel(localModel) || LOCAL_MODELS[0];
   const currentCloud = selectCloudModel(apiModel);
@@ -320,7 +335,7 @@ export default function App({ user, signOut }) {
           </div>
             {mode === 'cloud' && <div className="quota-summary">
               <div className="quota-head">
-                <strong><Shield size={15}/> โควตา API คงเหลือ</strong>
+                <strong><Shield size={15}/> โควตา RUN-AI คงเหลือ (รวมทั้งเว็บ)</strong>
                 <button className="quota-refresh" type="button" onClick={()=>refreshQuota().catch(e=>notify('อ่านโควตาไม่สำเร็จ: '+e.message))}><RefreshCw size={14}/> อัปเดต</button>
               </div>
               {liveQuota ? <>
@@ -328,7 +343,7 @@ export default function App({ user, signOut }) {
                   <span>โมเดลที่เลือก <b>{selectedQuota?.remaining ?? '—'} ครั้ง</b><small>วันนี้ {selectedQuota?.day.remaining ?? '—'}/{selectedQuota?.day.limit ?? '—'} · เดือน {selectedQuota?.month.remaining ?? '—'}/{selectedQuota?.month.limit ?? '—'}</small></span>
                   <span>รวมแชตทุกโมเดล <b>{chatGlobalQuota?.remaining ?? '—'} ครั้ง</b><small>วันนี้ {chatGlobalQuota?.day.remaining ?? '—'}/{chatGlobalQuota?.day.limit ?? '—'} · เดือน {chatGlobalQuota?.month.remaining ?? '—'}/{chatGlobalQuota?.month.limit ?? '—'}</small></span>
                 </div>
-                <small className="quota-reset">รีเซ็ตรายวัน {new Date(liveQuota.resetsAtUTC.day).toLocaleString('th-TH',{timeZone:'Asia/Bangkok',hour:'2-digit',minute:'2-digit',day:'numeric',month:'short'})} · นับคำขอที่เซิร์ฟเวอร์รับไว้แม้โมเดลล้มเหลว</small>
+                <small className="quota-reset">รีเซ็ตรายวัน {new Date(liveQuota.resetsAtUTC.day).toLocaleString('th-TH',{timeZone:'Asia/Bangkok',hour:'2-digit',minute:'2-digit',day:'numeric',month:'short'})} · ไม่ใช่เครดิตของ AWS/OpenRouter · นับคำขอที่รับไว้แม้โมเดลล้มเหลว</small>
               </> : <p className="quota-unavailable">กำลังอ่านโควตาจาก AWS หรือการเชื่อมต่อมีปัญหา — ระบบไม่ส่งคำขอเสียเงินจนกว่าจะอ่านได้</p>}
             </div>}
           <div className="chat-stream">
