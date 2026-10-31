@@ -2,8 +2,6 @@ import { a, defineData, defineFunction, type ClientSchema } from '@aws-amplify/b
 
 export const runAi = defineFunction({
   name: 'run-ai-inference',
-  // Keep the AppSync resolver and Lambda in the same stack to prevent
-  // circular CloudFormation dependencies during Amplify Gen 2 deployments.
   resourceGroupName: 'data',
   entry: '../functions/ai/handler.ts',
   timeoutSeconds: 90,
@@ -11,20 +9,21 @@ export const runAi = defineFunction({
 });
 
 const schema = a.schema({
-  // Ensure AppSync has the required GraphQL root Query type.
-  // Keep this low-cost health check on the same authenticated resolver.
   health: a.query()
     .returns(a.string())
-    .authorization((allow) => [allow.authenticated()])
+    .authorization((allow) => [allow.publicApiKey()])
     .handler(a.handler.function(runAi)),
   runAI: a.mutation()
     .arguments({ action: a.string().required(), payload: a.string().required() })
     .returns(a.string())
-    .authorization((allow) => [allow.authenticated()])
+    .authorization((allow) => [allow.publicApiKey()])
     .handler(a.handler.function(runAi)),
 });
 export type Schema = ClientSchema<typeof schema>;
 export const data = defineData({
   schema,
-  authorizationModes: { defaultAuthorizationMode: 'userPool' },
+  authorizationModes: {
+    defaultAuthorizationMode: 'apiKey',
+    apiKeyAuthorizationMode: { expiresInDays: 90 },
+  },
 });

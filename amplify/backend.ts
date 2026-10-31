@@ -4,10 +4,9 @@ import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Effect, PolicyStatement, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Function as LambdaFunction } from 'aws-cdk-lib/aws-lambda';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
-import { auth } from './auth/resource';
 import { data, runAi } from './data/resource';
 
-const backend = defineBackend({ auth, data, runAi });
+const backend = defineBackend({ data, runAi });
 // The resolver Lambda is grouped in the data stack. Co-locate its
 // DynamoDB and S3 resources to avoid cross-stack dependency cycles.
 const stack = backend.runAi.stack;
@@ -31,8 +30,9 @@ usageTable.grantReadWriteData(lambda);
 outputBucket.grantReadWrite(lambda);
 lambda.addEnvironment('USAGE_TABLE', usageTable.tableName);
 lambda.addEnvironment('OUTPUT_BUCKET', outputBucket.bucketName);
-lambda.addEnvironment('RUN_AI_ENABLE_BEDROCK', process.env.RUN_AI_ENABLE_BEDROCK === '1' ? '1' : '0');
-lambda.addEnvironment('RUN_AI_ALLOWED_EMAILS', process.env.RUN_AI_ALLOWED_EMAILS ?? '');
+// Anonymous cloud experiment is on by default. Override with
+// RUN_AI_ENABLE_BEDROCK=0 in Amplify build environment to disable paid calls.
+lambda.addEnvironment('RUN_AI_ENABLE_BEDROCK', process.env.RUN_AI_ENABLE_BEDROCK === '0' ? '0' : '1');
 lambda.addToRolePolicy(new PolicyStatement({
   effect: Effect.ALLOW,
   actions: ['bedrock:InvokeModel', 'bedrock:StartAsyncInvoke'],

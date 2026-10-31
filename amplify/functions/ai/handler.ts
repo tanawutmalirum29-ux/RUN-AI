@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { BedrockRuntimeClient, ConverseCommand, InvokeModelCommand, StartAsyncInvokeCommand, GetAsyncInvokeCommand } from '@aws-sdk/client-bedrock-runtime';
-import { DynamoDBClient, UpdateItemCommand, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, TransactWriteItemsCommand, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -11,10 +11,11 @@ const imageAI = new BedrockRuntimeClient({ region: 'us-west-2' });
 const videoAI = new BedrockRuntimeClient({ region: 'us-west-2' });
 const table = process.env.USAGE_TABLE!;
 const bucket = process.env.OUTPUT_BUCKET!;
-const limits = { chat: 40, image: 5, video: 1 } as const;
+// These limits apply to the ENTIRE public website, not just one device.
+const dailyLimits = { chat: 12, image: 2, video: 1 } as const;
+const monthlyLimits = { chat: 60, image: 8, video: 1 } as const;
 
-type Identity = { sub?: string; claims?: Record<string, unknown> };
-type Event = { arguments: { action: string; payload: string }; identity?: Identity; info?: { fieldName?: string } };
+type Event = { arguments: { action: string; payload: string }; info?: { fieldName?: string } };
 type ActionPayload = {
   prompt?: string;
   history?: Array<{ role: string; text: string }>;
@@ -24,21 +25,21 @@ type ActionPayload = {
   duration?: string;
   jobId?: string;
   key?: string;
+  visitorToken?: string;
 };
 
-function context(event: Event) {
-  const sub = String(event.identity?.sub || event.identity?.claims?.sub || '');
-  const email = String(event.identity?.claims?.email || '').toLowerCase();
-  if (!sub || !email) throw new Error('กรุณาเข้าสู่ระบบด้วยอีเมล');
-  const allowlist = (process.env.RUN_AI_ALLOWED_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  const allowed = allowlist.includes(email);
-  const enabled = process.env.RUN_AI_ENABLE_BEDROCK === '1';
-  return { sub, email, allowed, enabled };
+function context() {
+  return { enabled: process.env.RUN_AI_ENABLE_BEDROCK !== '0' };
+}
+function visitorId(p: ActionPayload): string {
+  const token = String(p.visitorToken || '');
+  if (!/^[0-9a-f-]{36}:[0-9a-f-]{36}$/i.test(token)) {
+    throw new Error('ข้อมูลผู้เยี่ยมชมไม่ถูกต้อง กรุณารีเฟรชเว็บไซต์');
+  }
+  return createHash('sha256').update(token).digest('hex');
 }
 function assertReady(c: ReturnType<typeof context>) {
-  if (!c.allowed || !c.enabled) {
-    throw new Error('ยังไม่เปิด Cloud AI: ตั้งค่า RUN_AI_ENABLE_BEDROCK=1 และ RUN_AI_ALLOWED_EMAILS ใน Amplify แล้ว Deploy อีกครั้ง');
-  }
+  if (!c.enabled) throw new Error('AWS AI ถูกปิดโดยผู้ดูแล');
 }
 function cleanPrompt(prompt: unknown, max: number) {
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > max) {
@@ -53,19 +54,34 @@ function inputImage(data: unknown): Uint8Array | undefined {
   }
   return new Uint8Array(Buffer.from(data, 'base64'));
 }
-async function spend(sub: string, kind: keyof typeof limits) {
-  const day = new Date().toISOString().slice(0, 10);
-  try {
-    await db.send(new UpdateItemCommand({
+async function spend(kind: keyof typeof dailyLimits) {
+  const iso = new Date().toISOString();
+  const day = iso.slice(0, 10);
+  const month = iso.slice(0, 7);
+  const update = (pk: string, sk: string, max: number) => ({
+    Update: {
       TableName: table,
-      Key: { pk: { S: 'LIMIT#' + sub }, sk: { S: day + '#' + kind } },
-      UpdateExpression: 'SET #n = if_not_exists(#n, :zero) + :one',
-      ConditionExpression: 'attribute_not_exists(#n) OR #n < :limit',
-      ExpressionAttributeNames: { '#n': 'count' },
-      ExpressionAttributeValues: { ':zero': { N: '0' }, ':one': { N: '1' }, ':limit': { N: String(limits[kind]) } },
+      Key: { pk: { S: pk }, sk: { S: sk } },
+      UpdateExpression: 'SET #counter = if_not_exists(#counter, :zero) + :one',
+      ConditionExpression: 'attribute_not_exists(#counter) OR #counter < :max',
+      ExpressionAttributeNames: { '#counter': 'count' },
+      ExpressionAttributeValues: {
+        ':zero': { N: '0' }, ':one': { N: '1' }, ':max': { N: String(max) },
+      },
+    },
+  });
+  try {
+    // Atomic global day+month limits. A new browser cannot reset them.
+    await db.send(new TransactWriteItemsCommand({
+      TransactItems: [
+        update('GLOBAL#MONTH', month + '#' + kind, monthlyLimits[kind]),
+        update('GLOBAL#DAY', day + '#' + kind, dailyLimits[kind]),
+      ],
     }));
   } catch (e: any) {
-    if (e?.name === 'ConditionalCheckFailedException') throw new Error('ใช้โควตา AI ประจำวันครบแล้ว (' + limits[kind] + ' ครั้ง/วัน)');
+    if (e?.name === 'TransactionCanceledException' || e?.name === 'ConditionalCheckFailedException') {
+      throw new Error('ครบโควตา AI แบบรวมของเว็บ (' + kind + ') กรุณาลองวัน/เดือนถัดไป');
+    }
     throw e;
   }
 }
@@ -114,7 +130,8 @@ async function createImage(sub: string, p: ActionPayload) {
 async function startVideo(sub: string, p: ActionPayload) {
   const prompt = cleanPrompt(p.prompt, 2500);
   const aspect = ['16:9', '9:16', '1:1', '4:3', '3:4'].includes(p.aspect || '') ? p.aspect : '16:9';
-  const duration = p.duration === '9s' ? '9s' : '5s';
+  // Cap generated video at five seconds to limit anonymous paid usage.
+  const duration = '5s';
   const id = randomUUID();
   const prefix = 'videos/' + sub + '/' + id + '/';
   const image = inputImage(p.image);
@@ -158,41 +175,41 @@ async function getVideo(sub: string, p: ActionPayload) {
   return { status: 'Completed', key: video.Key, url: await signed(video.Key) };
 }
 export const handler = async (event: Event): Promise<string> => {
-  // Query.health is a read-only readiness check, not paid inference.
   if (event.info?.fieldName === 'health') return 'RUN-AI API ready';
-  const c = context(event);
+  const c = context();
   const action = event.arguments.action;
   if (!event.arguments.payload || event.arguments.payload.length > 780_000) throw new Error('ข้อมูลที่ส่งใหญ่เกิน 780 KB');
   let p: ActionPayload;
   try { p = JSON.parse(event.arguments.payload); } catch { throw new Error('รูปแบบข้อมูล JSON ไม่ถูกต้อง'); }
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('ข้อมูลไม่ถูกต้อง');
   if (action === 'status') return JSON.stringify({
-    configured: c.enabled, allowed: c.allowed,
+    configured: c.enabled, allowed: true, anonymous: true,
     models: { chat: 'Amazon Nova Lite', image: 'Stable Image Core', video: 'Luma Ray2' },
-    dailyLimits: limits,
+    dailyLimits, monthlyLimits,
   });
   if (action === 'file-url') {
-    assertReady(c);
+    const sub = visitorId(p);
     const key = String(p.key || '');
-    if (!key.startsWith('assets/' + c.sub + '/') && !key.startsWith('videos/' + c.sub + '/')) throw new Error('ไฟล์นี้ไม่ใช่ของบัญชีคุณ');
+    if (!key.startsWith('assets/' + sub + '/') && !key.startsWith('videos/' + sub + '/')) throw new Error('ไฟล์นี้ไม่ใช่ของบัญชีคุณ');
     return JSON.stringify({ url: await signed(key) });
   }
+  const sub = visitorId(p);
+  if (action === 'video-status') return JSON.stringify(await getVideo(sub, p));
   assertReady(c);
-  if (action === 'video-status') return JSON.stringify(await getVideo(c.sub, p));
   if (action === 'chat') {
     const prompt = cleanPrompt(p.prompt, 6000);
-    await spend(c.sub, 'chat');
-    return JSON.stringify(await ask(c.sub, { ...p, prompt }));
+    await spend( 'chat');
+    return JSON.stringify(await ask(sub, { ...p, prompt }));
   }
   if (action === 'image') {
     cleanPrompt(p.prompt, 2000);
-    await spend(c.sub, 'image');
-    return JSON.stringify(await createImage(c.sub, p));
+    await spend( 'image');
+    return JSON.stringify(await createImage(sub, p));
   }
   if (action === 'video-start') {
     cleanPrompt(p.prompt, 2500);
-    await spend(c.sub, 'video');
-    return JSON.stringify(await startVideo(c.sub, p));
+    await spend( 'video');
+    return JSON.stringify(await startVideo(sub, p));
   }
   throw new Error('คำสั่งไม่รองรับ');
 };
