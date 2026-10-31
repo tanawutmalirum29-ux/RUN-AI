@@ -2,6 +2,7 @@ import { defineBackend } from '@aws-amplify/backend';
 import { RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Effect, PolicyStatement, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { Function as LambdaFunction } from 'aws-cdk-lib/aws-lambda';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { auth } from './auth/resource';
 import { data, runAi } from './data/resource';
@@ -23,7 +24,9 @@ const outputBucket = new Bucket(stack, 'RunAiOutputs', {
   autoDeleteObjects: true,
   removalPolicy: RemovalPolicy.DESTROY,
 });
-const lambda = backend.runAi.resources.lambda;
+// Amplify exposes IFunction in its public interface, but the generated
+// Lambda is a concrete CDK Function at synthesis time.
+const lambda = backend.runAi.resources.lambda as LambdaFunction;
 usageTable.grantReadWriteData(lambda);
 outputBucket.grantReadWrite(lambda);
 lambda.addEnvironment('USAGE_TABLE', usageTable.tableName);
