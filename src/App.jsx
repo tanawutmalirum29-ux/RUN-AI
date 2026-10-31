@@ -71,6 +71,7 @@ export default function App({ user, signOut }) {
   const [dropOver, setDropOver] = useState(false);
   const fileRef = useRef(null);
   const engine = useRef(null);
+  const chatSending = useRef(false);
   const chatEnd = useRef(null);
 
   const notify = text => setAlert(text);
@@ -113,8 +114,10 @@ export default function App({ user, signOut }) {
     return result;
   }
   async function sendChat(text = chatText) {
-    if (busy) return;
+    if (chatSending.current || busy) return;
     if (!text.trim() && !attachment) return;
+    // A ref lock applies synchronously, before React renders busy state.
+    chatSending.current = true;
     let prompt = text.trim() || (attachment?.type.startsWith('image/') ? 'วิเคราะห์ภาพนี้ให้หน่อย' : 'ช่วยตรวจไฟล์ที่แนบ');
     // Shared, valid history for both Browser AI and AWS Bedrock.
     const prior = messages.filter(x => (x.role === 'user' || x.role === 'assistant') && !x.error && typeof x.text === 'string').slice(-20);
@@ -148,7 +151,7 @@ export default function App({ user, signOut }) {
       setMessages(x => [...x, { role: 'assistant', text: String(answer), time: Date.now() }]);
     } catch (e) {
       setMessages(x => [...x, { role: 'assistant', text: 'ไม่สำเร็จ: ' + e.message, error: true, time: Date.now() }]);
-    } finally { setBusy(''); }
+    } finally { chatSending.current = false; setBusy(''); }
   }
   async function generateImage() {
     if (busy || !imagePrompt.trim()) return;
