@@ -9,6 +9,7 @@ import {
 import { cloudConfigured, runCloud } from './service';
 import { deleteAsset, downloadBlob, listAssets, photoBytes, saveAsset } from './db';
 import ImageEditor from './ImageEditor';
+import { buildConversation } from '../shared/chat-history.mjs';
 
 const sections = [
   { id: 'home', title: 'ภาพรวม', icon: Layers3 },
@@ -132,19 +133,12 @@ export default function App({ user, signOut }) {
       if (mode === 'browser') {
         if (file?.type.startsWith('image/') || file?.type.startsWith('video/')) throw new Error('Browser AI รุ่นทดลองเป็นโมเดลข้อความเท่านั้น ภาพและเฟรมวิดีโอต้องเลือก AWS AI');
         const local = await loadEngine();
-        // Exclude the welcome bubble, previous errors, and orphaned assistant turns.
-        // WebLLM requires the conversation to begin with a user message.
-        const history = prior.filter(x => !x.error && typeof x.text === 'string')
-          .map(x => ({ role: x.role, content: x.text.slice(0, 3000) }));
-        while (history.length && history[0].role !== 'user') history.shift();
-        const normalizedHistory = [];
-        for (const item of history) {
-          if (item.role === 'assistant' && normalizedHistory.at(-1)?.role !== 'user') continue;
-          if (item.role === 'user' && normalizedHistory.at(-1)?.role === 'user') {
-            normalizedHistory[normalizedHistory.length - 1].content += '\\n' + item.content;
-          } else normalizedHistory.push(item);
-        }
-        const out = await local.chat.completions.create({ messages: [...normalizedHistory, { role: 'user', content: prompt + textFile }], temperature: 0.6, max_tokens: 600 });
+        const chatMessages = buildConversation(prior, prompt + textFile, {
+          maxHistoryMessages: 10, maxCharsPerHistoryMessage: 3000,
+        });
+        const out = await local.chat.completions.create({
+          messages: chatMessages, temperature: 0.6, max_tokens: 600,
+        });
         answer = out.choices?.[0]?.message?.content || 'ไม่พบข้อความตอบกลับ';
       } else {
         const image = file && (file.type.startsWith('image/') || file.type.startsWith('video/')) ? await photoBytes(file) : '';

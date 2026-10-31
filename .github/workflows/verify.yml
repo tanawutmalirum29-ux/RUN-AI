@@ -25,6 +25,8 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Regression tests for Browser AI and Bedrock conversation history
+        run: npm test
       - name: Type-check Amplify backend
         run: npm run check
       - name: Build Vite frontend

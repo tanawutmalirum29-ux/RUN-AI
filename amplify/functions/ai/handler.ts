@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { buildConversation } from '../../../shared/chat-history.mjs';
 import { BedrockRuntimeClient, ConverseCommand, InvokeModelCommand, StartAsyncInvokeCommand, GetAsyncInvokeCommand } from '@aws-sdk/client-bedrock-runtime';
 import { DynamoDBClient, TransactWriteItemsCommand, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
@@ -91,24 +92,24 @@ async function signed(key: string) {
 async function ask(sub: string, p: ActionPayload) {
   const prompt = cleanPrompt(p.prompt, 6000);
   const bytes = inputImage(p.image);
-  const history = Array.isArray(p.history) ? p.history.slice(-10)
-    .filter(x => ['user', 'assistant'].includes(x.role) && typeof x.text === 'string')
-    .map(x => ({ role: x.role, content: [{ text: x.text.slice(0, 3500) }] })) : [];
-  // Bedrock Converse requires the first message to be a user turn.
-  // Skip welcome messages and prior failures, then combine adjacent turns.
-  while (history.length && history[0].role !== 'user') history.shift();
-  const validHistory: typeof history = [];
-  for (const message of history) {
-    const last = validHistory[validHistory.length - 1];
-    if (last?.role === message.role) last.content.push(...message.content);
-    else validHistory.push(message);
+  // Same tested history normalization as Browser AI. Never trust UI history:
+  // it can contain greeting/error bubbles or an unanswered user turn.
+  const turns = buildConversation(p.history, prompt, {
+    maxHistoryMessages: 10, maxCharsPerHistoryMessage: 3500,
+  });
+  const messages = turns.map(turn => ({
+    role: turn.role,
+    content: [{ text: turn.content }] as any[],
+  }));
+  if (bytes) {
+    messages[messages.length - 1].content.push({
+      image: { format: 'jpeg', source: { bytes } },
+    });
   }
-  const content: any[] = [{ text: prompt }];
-  if (bytes) content.push({ image: { format: 'jpeg', source: { bytes } } });
   const response = await textAI.send(new ConverseCommand({
     modelId: 'amazon.nova-lite-v1:0',
     system: [{ text: 'You are RUN AI, a useful creative studio assistant. Reply in the same language as the user. Be accurate and do not pretend to see unprovided media.' }],
-    messages: [...validHistory, { role: 'user', content }] as any,
+    messages: messages as any,
     inferenceConfig: { maxTokens: 1100, temperature: 0.6 },
   }));
   const answer = (response.output?.message?.content || []).map(x => x.text || '').join('\n');
