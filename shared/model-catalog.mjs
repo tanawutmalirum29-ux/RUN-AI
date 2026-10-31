@@ -26,6 +26,13 @@ export const CLOUD_MODELS = Object.freeze([
   { id: 'openrouter:qwen3-32b', label: 'Qwen3 · 32B', provider: 'openrouter', modelId: 'qwen/qwen3-32b', supportsImage: false, description: 'สนทนาหลายภาษาและเขียนโค้ด', style: 'ทั่วไป' },
   { id: 'openrouter:deepseek-v4-flash', label: 'DeepSeek V4.1 Flash', provider: 'openrouter', modelId: 'deepseek/deepseek-v4.1-flash', supportsImage: true, description: 'โมเดล reasoning/โค้ดพร้อมอ่านภาพ', style: 'คุณภาพ' },
   { id: 'openrouter:dolphin-uncensored', label: 'Dolphin · Venice Uncensored', provider: 'openrouter', modelId: 'cognitivecomputations/dolphin-mistral-24b-venice-edition', supportsImage: false, description: 'รุ่นที่ผู้ให้บริการระบุเป็น Uncensored (ข้อความเท่านั้น)', style: 'Uncensored' },
+  {"id":"openrouter:mistral-small-3.2","label":"Mistral Small 3.2 · 24B","provider":"openrouter","modelId":"mistralai/mistral-small-3.2-24b-instruct","supportsImage":true,"description":"คำสั่ง งานสร้างสรรค์ และวิเคราะห์ภาพ","style":"ทั่วไป"},
+  {"id":"openrouter:gemma3-27b","label":"Gemma 3 · 27B","provider":"openrouter","modelId":"google/gemma-3-27b-it","supportsImage":true,"description":"หลายภาษาและอ่านภาพ","style":"หลายภาษา"},
+  {"id":"openrouter:llama3.3-70b","label":"Llama 3.3 · 70B","provider":"openrouter","modelId":"meta-llama/llama-3.3-70b-instruct","supportsImage":false,"description":"แชตภาษาไทยและงานเขียน","style":"หลายภาษา"},
+  {"id":"openrouter:hermes4-70b","label":"Hermes 4 · 70B","provider":"openrouter","modelId":"nousresearch/hermes-4-70b","supportsImage":false,"description":"Open-tuned reasoning และงานสร้างสรรค์ ไม่ใช่ uncensored แบบรับประกัน","style":"เปิดกว้าง"},
+  {"id":"openrouter:dolphin3-mistral","label":"Dolphin 3.0 · Mistral 24B","provider":"openrouter","modelId":"cognitivecomputations/dolphin3.0-mistral-24b","supportsImage":false,"description":"Dolphin instruct สำหรับสนทนาและโค้ด","style":"เปิดกว้าง"},
+  {"id":"openrouter:dolphin3-r1","label":"Dolphin 3.0 R1 · 24B","provider":"openrouter","modelId":"cognitivecomputations/dolphin3.0-r1-mistral-24b","supportsImage":false,"description":"Dolphin reasoning open-tuned","style":"เปิดกว้าง"},
+  {"id":"openrouter:dolphin-llama70b","label":"Dolphin Llama 3 · 70B (Uncensored)","provider":"openrouter","modelId":"cognitivecomputations/dolphin-llama-3-70b","supportsImage":false,"description":"ผู้สร้างระบุเป็น uncensored ข้อจำกัดผู้ให้บริการยังมีผล","style":"Uncensored"},
 ]);
 
 export function getLocalModel(id) {
@@ -37,6 +44,6 @@ export function selectCloudModel(id = DEFAULT_CLOUD_MODEL) {
   return match;
 }
 export function cloudModelAvailable(model, status) {
-  if (!model || !status?.configured) return false;
-  return model.provider === 'openrouter' ? status.openrouterEnabled === true : true;
+  if (!model || !status) return false;
+  return model.provider === 'openrouter' ? status.openrouterEnabled === true : status.configured === true;
 }

@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { buildConversation } from '../../../shared/chat-history.mjs';
 import { DEFAULT_CLOUD_MODEL, selectCloudModel } from '../../../shared/model-catalog.mjs';
+import { GLOBAL_QUOTAS, quotaKeysForSpend, allQuotaKeysForRead, quotaCounterKey, buildQuotaSnapshot } from '../../../shared/quota-policy.mjs';
 import { toOpenRouterMessages, extractOpenRouterText } from '../../../shared/openrouter-chat.mjs';
 import { BedrockRuntimeClient, ConverseCommand, InvokeModelCommand, StartAsyncInvokeCommand, GetAsyncInvokeCommand } from '@aws-sdk/client-bedrock-runtime';
-import { DynamoDBClient, TransactWriteItemsCommand, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, TransactWriteItemsCommand, BatchGetItemCommand, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -14,10 +15,6 @@ const imageAI = new BedrockRuntimeClient({ region: 'us-west-2' });
 const videoAI = new BedrockRuntimeClient({ region: 'us-west-2' });
 const table = process.env.USAGE_TABLE!;
 const bucket = process.env.OUTPUT_BUCKET!;
-// These limits apply to the ENTIRE public website, not just one device.
-const dailyLimits = { chat: 12, image: 2, video: 1 } as const;
-const monthlyLimits = { chat: 60, image: 8, video: 1 } as const;
-
 type Event = { arguments: { action: string; payload: string }; info?: { fieldName?: string } };
 type ActionPayload = {
   prompt?: string;
@@ -61,11 +58,27 @@ function inputImage(data: unknown): Uint8Array | undefined {
   }
   return new Uint8Array(Buffer.from(data, 'base64'));
 }
-async function spend(kind: keyof typeof dailyLimits) {
-  const iso = new Date().toISOString();
-  const day = iso.slice(0, 10);
-  const month = iso.slice(0, 7);
-  const update = (pk: string, sk: string, max: number) => ({
+async function quotaStatus() {
+  const keys = allQuotaKeysForRead(new Date());
+  const result = await db.send(new BatchGetItemCommand({
+    RequestItems: { [table]: { Keys: keys.map(key => ({
+      pk: { S: key.pk }, sk: { S: key.sk },
+    })), ConsistentRead: true } },
+  }));
+  if (Object.keys(result.UnprocessedKeys ?? {}).length) {
+    // Never incorrectly present unprocessed counters as 0 usage.
+    throw new Error('ยังอ่านโควตาได้ไม่ครบ กรุณากดรีเฟรชสถานะ');
+  }
+  const counts: Record<string,number> = {};
+  for (const item of result.Responses?.[table] ?? []) {
+    const pk = item.pk?.S, sk = item.sk?.S;
+    if (pk && sk) counts[quotaCounterKey(pk,sk)] = Number(item.count?.N ?? 0);
+  }
+  return buildQuotaSnapshot(counts,new Date());
+}
+async function spend(kind: 'chat'|'image'|'video', modelId?: string) {
+  const keys = quotaKeysForSpend(kind,modelId,new Date());
+  const update = ({pk,sk,limit}: {pk:string;sk:string;limit:number}) => ({
     Update: {
       TableName: table,
       Key: { pk: { S: pk }, sk: { S: sk } },
@@ -73,21 +86,16 @@ async function spend(kind: keyof typeof dailyLimits) {
       ConditionExpression: 'attribute_not_exists(#counter) OR #counter < :max',
       ExpressionAttributeNames: { '#counter': 'count' },
       ExpressionAttributeValues: {
-        ':zero': { N: '0' }, ':one': { N: '1' }, ':max': { N: String(max) },
+        ':zero': { N: '0' }, ':one': { N: '1' }, ':max': { N: String(limit) },
       },
     },
   });
   try {
-    // Atomic global day+month limits. A new browser cannot reset them.
-    await db.send(new TransactWriteItemsCommand({
-      TransactItems: [
-        update('GLOBAL#MONTH', month + '#' + kind, monthlyLimits[kind]),
-        update('GLOBAL#DAY', day + '#' + kind, dailyLimits[kind]),
-      ],
-    }));
-  } catch (e: any) {
-    if (e?.name === 'TransactionCanceledException' || e?.name === 'ConditionalCheckFailedException') {
-      throw new Error('ครบโควตา AI แบบรวมของเว็บ (' + kind + ') กรุณาลองวัน/เดือนถัดไป');
+    // Four atomic counters for chat (global + selected model, each day/month).
+    await db.send(new TransactWriteItemsCommand({TransactItems:keys.map(update)}));
+  } catch(e:any) {
+    if(e?.name==='TransactionCanceledException'||e?.name==='ConditionalCheckFailedException') {
+      throw new Error('โควตาโมเดลหรือโควตารวมของเว็บหมดแล้ว กรุณาดูจำนวนคงเหลือ');
     }
     throw e;
   }
@@ -237,11 +245,17 @@ export const handler = async (event: Event): Promise<string> => {
   let p: ActionPayload;
   try { p = JSON.parse(event.arguments.payload); } catch { throw new Error('รูปแบบข้อมูล JSON ไม่ถูกต้อง'); }
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('ข้อมูลไม่ถูกต้อง');
-  if (action === 'status') return JSON.stringify({
-    configured: c.enabled, openrouterEnabled: c.openrouterEnabled, allowed: true, anonymous: true,
-    models: { chat: 'Amazon Nova Lite', image: 'Stable Image Core', video: 'Luma Ray2' },
-    dailyLimits, monthlyLimits,
-  });
+  if (action === 'status' || action === 'quota') {
+    const quota = await quotaStatus();
+    return JSON.stringify({
+      configured: c.enabled, openrouterEnabled: c.openrouterEnabled,
+      allowed: true, anonymous: true,
+      models: { chat: 'Multiple providers', image: 'Stable Image Core', video: 'Luma Ray2' },
+      dailyLimits: Object.fromEntries(Object.entries(GLOBAL_QUOTAS).map(([k,v])=>[k,v.day])),
+      monthlyLimits: Object.fromEntries(Object.entries(GLOBAL_QUOTAS).map(([k,v])=>[k,v.month])),
+      quota,
+    });
+  }
   if (action === 'file-url') {
     const sub = visitorId(p);
     const key = String(p.key || '');
@@ -250,22 +264,24 @@ export const handler = async (event: Event): Promise<string> => {
   }
   const sub = visitorId(p);
   if (action === 'video-status') return JSON.stringify(await getVideo(sub, p));
-  assertReady(c);
   if (action === 'chat') {
     const prompt = cleanPrompt(p.prompt, 6000);
     const chosen = selectCloudModel(p.model ?? DEFAULT_CLOUD_MODEL);
     // Validate permissions and modality before using a paid quota.
     if (chosen.provider === 'openrouter' && !c.openrouterEnabled) throw new Error('ยังไม่ได้ตั้งค่า OpenRouter API Key ใน AWS');
+    if (chosen.provider === 'bedrock') assertReady(c);
     if (p.image && !chosen.supportsImage) throw new Error('โมเดลที่เลือกไม่รองรับภาพ');
-    await spend('chat');
+    await spend('chat',chosen.id);
     return JSON.stringify(await ask(sub, { ...p, prompt }));
   }
   if (action === 'image') {
+    assertReady(c);
     cleanPrompt(p.prompt, 2000);
     await spend( 'image');
     return JSON.stringify(await createImage(sub, p));
   }
   if (action === 'video-start') {
+    assertReady(c);
     cleanPrompt(p.prompt, 2500);
     await spend( 'video');
     return JSON.stringify(await startVideo(sub, p));
