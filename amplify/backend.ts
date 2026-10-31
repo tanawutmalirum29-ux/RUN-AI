@@ -14,7 +14,9 @@ const usageTable = new Table(stack, 'RunAiUsageAndJobs', {
   partitionKey: { name: 'pk', type: AttributeType.STRING },
   sortKey: { name: 'sk', type: AttributeType.STRING },
   billingMode: BillingMode.PAY_PER_REQUEST,
-  removalPolicy: RemovalPolicy.DESTROY,
+  // Preserve accounting and kill-switch state if the Amplify stack is removed.
+  timeToLiveAttribute: 'expiresAt',
+  removalPolicy: RemovalPolicy.RETAIN,
 });
 const outputBucket = new Bucket(stack, 'RunAiOutputs', {
   blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
@@ -33,6 +35,10 @@ lambda.addEnvironment('OUTPUT_BUCKET', outputBucket.bucketName);
 // Anonymous cloud experiment is on by default. Override with
 // RUN_AI_ENABLE_BEDROCK=0 in Amplify build environment to disable paid calls.
 lambda.addEnvironment('RUN_AI_ENABLE_BEDROCK', process.env.RUN_AI_ENABLE_BEDROCK === '0' ? '0' : '1');
+lambda.addEnvironment('RUN_AI_PAID_VIDEO_ENABLED', process.env.RUN_AI_PAID_VIDEO_ENABLED === '1' ? '1' : '0');
+// Configurable risk budgets (integer USD cents); these are NOT actual bills.
+lambda.addEnvironment('RUN_AI_RISK_DAY_CENTS', process.env.RUN_AI_RISK_DAY_CENTS || '300');
+lambda.addEnvironment('RUN_AI_RISK_MONTH_CENTS', process.env.RUN_AI_RISK_MONTH_CENTS || '1500');
 lambda.addToRolePolicy(new PolicyStatement({
   effect: Effect.ALLOW,
   actions: ['bedrock:InvokeModel', 'bedrock:StartAsyncInvoke'],

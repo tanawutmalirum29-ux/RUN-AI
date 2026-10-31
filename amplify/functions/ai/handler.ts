@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { buildConversation } from '../../../shared/chat-history.mjs';
 import { DEFAULT_CLOUD_MODEL, selectCloudModel } from '../../../shared/model-catalog.mjs';
-import { GLOBAL_QUOTAS, quotaKeysForSpend, allQuotaKeysForRead, quotaCounterKey, buildQuotaSnapshot } from '../../../shared/quota-policy.mjs';
+import { GLOBAL_QUOTAS, allQuotaKeysForRead, quotaCounterKey, buildQuotaSnapshot } from '../../../shared/quota-policy.mjs';
+import { CONTROL_KEY, costGuardCounterKeys, buildGuardSnapshot, spendPlan } from '../../../shared/cost-guard.mjs';
 import { toOpenRouterMessages, extractOpenRouterText } from '../../../shared/openrouter-chat.mjs';
 import { BedrockRuntimeClient, ConverseCommand, InvokeModelCommand, StartAsyncInvokeCommand, GetAsyncInvokeCommand } from '@aws-sdk/client-bedrock-runtime';
 import { DynamoDBClient, TransactWriteItemsCommand, BatchGetItemCommand, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
@@ -27,6 +28,7 @@ type ActionPayload = {
   key?: string;
   visitorToken?: string;
   model?: string;
+  requestId?: string;
 };
 
 function context() {
@@ -58,44 +60,112 @@ function inputImage(data: unknown): Uint8Array | undefined {
   }
   return new Uint8Array(Buffer.from(data, 'base64'));
 }
+function guardConfig() {
+  return {
+    day: process.env.RUN_AI_RISK_DAY_CENTS,
+    month: process.env.RUN_AI_RISK_MONTH_CENTS,
+  };
+}
+function paidVideoEnabled() { return process.env.RUN_AI_PAID_VIDEO_ENABLED === '1'; }
 async function quotaStatus() {
-  const keys = allQuotaKeysForRead(new Date());
+  const now = new Date();
+  const keys = [
+    ...allQuotaKeysForRead(now),
+    ...costGuardCounterKeys(now).map(({pk,sk})=>({pk,sk})),
+    CONTROL_KEY,
+  ];
   const result = await db.send(new BatchGetItemCommand({
     RequestItems: { [table]: { Keys: keys.map(key => ({
       pk: { S: key.pk }, sk: { S: key.sk },
     })), ConsistentRead: true } },
   }));
   if (Object.keys(result.UnprocessedKeys ?? {}).length) {
-    // Never incorrectly present unprocessed counters as 0 usage.
+    // Do not report a false zero when DynamoDB throttles a partial read.
     throw new Error('ยังอ่านโควตาได้ไม่ครบ กรุณากดรีเฟรชสถานะ');
   }
   const counts: Record<string,number> = {};
+  let control: { enabled?: unknown } | null = null;
   for (const item of result.Responses?.[table] ?? []) {
     const pk = item.pk?.S, sk = item.sk?.S;
-    if (pk && sk) counts[quotaCounterKey(pk,sk)] = Number(item.count?.N ?? 0);
+    if (!pk || !sk) continue;
+    if (pk === CONTROL_KEY.pk && sk === CONTROL_KEY.sk) {
+      control = { enabled: item.enabled?.BOOL === true ? true : false };
+    } else {
+      counts[quotaCounterKey(pk,sk)] = Number(item.count?.N ?? item.reservedCents?.N ?? 0);
+    }
   }
-  return buildQuotaSnapshot(counts,new Date());
+  const costGuard = buildGuardSnapshot(
+    counts,control,guardConfig().day,guardConfig().month,now,
+  );
+  return { quota:buildQuotaSnapshot(counts,now), costGuard };
 }
-async function spend(kind: 'chat'|'image'|'video', modelId?: string) {
-  const keys = quotaKeysForSpend(kind,modelId,new Date());
-  const update = ({pk,sk,limit}: {pk:string;sk:string;limit:number}) => ({
+function validatedRequestId(p: ActionPayload) {
+  // Older clients that lack requestId remain compatible; all new clients
+  // provide a UUID so retrying an identical request cannot bill twice.
+  if (p.requestId == null) return randomUUID();
+  if (typeof p.requestId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.requestId)) {
+    throw new Error('รหัสคำขอไม่ถูกต้อง');
+  }
+  return p.requestId.toLowerCase();
+}
+async function spend(kind: 'chat'|'image'|'video', sub: string, p: ActionPayload, modelId?: string) {
+  const config = guardConfig();
+  const plan = spendPlan(kind,modelId,config.day,config.month,new Date());
+  const quotaUpdate = ({pk,sk,limit}:{pk:string;sk:string;limit:number}) => ({
     Update: {
-      TableName: table,
-      Key: { pk: { S: pk }, sk: { S: sk } },
-      UpdateExpression: 'SET #counter = if_not_exists(#counter, :zero) + :one',
-      ConditionExpression: 'attribute_not_exists(#counter) OR #counter < :max',
-      ExpressionAttributeNames: { '#counter': 'count' },
-      ExpressionAttributeValues: {
-        ':zero': { N: '0' }, ':one': { N: '1' }, ':max': { N: String(limit) },
+      TableName:table, Key:{pk:{S:pk},sk:{S:sk}},
+      UpdateExpression:'SET #count = if_not_exists(#count, :zero) + :one',
+      ConditionExpression:'attribute_not_exists(#count) OR #count < :max',
+      ExpressionAttributeNames:{'#count':'count'},
+      ExpressionAttributeValues:{
+        ':zero':{N:'0'},':one':{N:'1'},':max':{N:String(limit)},
       },
     },
   });
+  const riskUpdate = ({pk,sk,charge,limit}:{pk:string;sk:string;charge:number;limit:number}) => ({
+    Update: {
+      TableName:table, Key:{pk:{S:pk},sk:{S:sk}},
+      UpdateExpression:'SET #cost = if_not_exists(#cost, :zero) + :charge',
+      ConditionExpression:'attribute_not_exists(#cost) OR #cost <= :room',
+      ExpressionAttributeNames:{'#cost':'reservedCents'},
+      ExpressionAttributeValues:{
+        ':zero':{N:'0'},':charge':{N:String(charge)},
+        ':room':{N:String(limit-charge)},
+      },
+    },
+  });
+  const requestId = validatedRequestId(p);
+  const now = new Date();
+  const operations = [
+    { ConditionCheck:{
+      TableName:table, Key:{pk:{S:CONTROL_KEY.pk},sk:{S:CONTROL_KEY.sk}},
+      ConditionExpression:'attribute_not_exists(pk) OR #enabled = :yes',
+      ExpressionAttributeNames:{'#enabled':'enabled'},
+      ExpressionAttributeValues:{':yes':{BOOL:true}},
+    } },
+    ...plan.quotaItems.map(quotaUpdate),
+    ...plan.budgetItems.map(riskUpdate),
+    { Put:{
+      TableName:table,
+      Item:{
+        pk:{S:'REQUEST#'+sub},sk:{S:requestId},
+        kind:{S:kind},model:{S:modelId || kind},
+        reservedCents:{N:String(plan.reservedCents)},
+        createdAt:{S:now.toISOString()},
+        expiresAt:{N:String(Math.floor(now.getTime()/1000)+90*24*3600)},
+      },
+      ConditionExpression:'attribute_not_exists(pk)',
+    } },
+  ];
   try {
-    // Four atomic counters for chat (global + selected model, each day/month).
-    await db.send(new TransactWriteItemsCommand({TransactItems:keys.map(update)}));
+    await db.send(new TransactWriteItemsCommand({TransactItems:operations}));
   } catch(e:any) {
-    if(e?.name==='TransactionCanceledException'||e?.name==='ConditionalCheckFailedException') {
-      throw new Error('โควตาโมเดลหรือโควตารวมของเว็บหมดแล้ว กรุณาดูจำนวนคงเหลือ');
+    if (e?.name === 'TransactionCanceledException' || e?.name === 'ConditionalCheckFailedException') {
+      if (e?.CancellationReasons?.at(-1)?.Code === 'ConditionalCheckFailed') {
+        throw new Error('คำขอนี้ถูกส่งไปแล้ว จึงไม่เรียก AI หรือหักโควตาซ้ำ');
+      }
+      throw new Error('AI ถูกปิดหรือโควตา/งบความเสี่ยงของเว็บเต็มแล้ว กรุณาตรวจสถานะ');
     }
     throw e;
   }
@@ -246,14 +316,20 @@ export const handler = async (event: Event): Promise<string> => {
   try { p = JSON.parse(event.arguments.payload); } catch { throw new Error('รูปแบบข้อมูล JSON ไม่ถูกต้อง'); }
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('ข้อมูลไม่ถูกต้อง');
   if (action === 'status' || action === 'quota') {
-    const quota = await quotaStatus();
+    const { quota, costGuard } = await quotaStatus();
+    const allowed = costGuard.enabled;
     return JSON.stringify({
-      configured: c.enabled, openrouterEnabled: c.openrouterEnabled,
-      allowed: true, anonymous: true,
-      models: { chat: 'Multiple providers', image: 'Stable Image Core', video: 'Luma Ray2' },
-      dailyLimits: Object.fromEntries(Object.entries(GLOBAL_QUOTAS).map(([k,v])=>[k,v.day])),
-      monthlyLimits: Object.fromEntries(Object.entries(GLOBAL_QUOTAS).map(([k,v])=>[k,v.month])),
-      quota,
+      // Providers remain configured, but UI must not offer paid calls when
+      // a live operator kill switch has been activated.
+      configured: c.enabled && allowed,
+      openrouterEnabled: c.openrouterEnabled && allowed,
+      paidVideoEnabled: paidVideoEnabled() && c.enabled && allowed,
+      paidApiEnabled:allowed,
+      anonymous: true,
+      models:{ chat:'Multiple providers', image:'Stable Image Core', video:'Luma Ray2' },
+      dailyLimits:Object.fromEntries(Object.entries(GLOBAL_QUOTAS).map(([k,v])=>[k,v.day])),
+      monthlyLimits:Object.fromEntries(Object.entries(GLOBAL_QUOTAS).map(([k,v])=>[k,v.month])),
+      quota, costGuard,
     });
   }
   if (action === 'file-url') {
@@ -271,19 +347,20 @@ export const handler = async (event: Event): Promise<string> => {
     if (chosen.provider === 'openrouter' && !c.openrouterEnabled) throw new Error('ยังไม่ได้ตั้งค่า OpenRouter API Key ใน AWS');
     if (chosen.provider === 'bedrock') assertReady(c);
     if (p.image && !chosen.supportsImage) throw new Error('โมเดลที่เลือกไม่รองรับภาพ');
-    await spend('chat',chosen.id);
+    await spend('chat',sub,p,chosen.id);
     return JSON.stringify(await ask(sub, { ...p, prompt }));
   }
   if (action === 'image') {
     assertReady(c);
     cleanPrompt(p.prompt, 2000);
-    await spend( 'image');
+    await spend('image',sub,p);
     return JSON.stringify(await createImage(sub, p));
   }
   if (action === 'video-start') {
     assertReady(c);
     cleanPrompt(p.prompt, 2500);
-    await spend( 'video');
+    if (!paidVideoEnabled()) throw new Error('วิดีโอแบบเสียเงินปิดไว้เพื่อป้องกันค่าใช้จ่าย โปรดเปิดใช้งานโดยผู้ดูแล');
+    await spend('video',sub,p);
     return JSON.stringify(await startVideo(sub, p));
   }
   throw new Error('คำสั่งไม่รองรับ');

@@ -17,8 +17,12 @@ function guestToken() {
 export async function runCloud(action, payload = {}) {
   if (!cloudConfigured) throw new Error('ยังไม่เชื่อม AWS Backend: ตรวจสถานะ Amplify Deploy');
   if (!client) client = generateClient({ authMode: 'apiKey' });
+  // Idempotency token for all paid operations: retries cannot silently
+  // spend the same request a second time when the token is reused.
+  const isPaid = action === 'chat' || action === 'image' || action === 'video-start';
+  const requestId = isPaid ? (payload.requestId || crypto.randomUUID()) : undefined;
   const result = await client.mutations.runAI({
-    action, payload: JSON.stringify({ ...payload, visitorToken: guestToken() }),
+    action, payload: JSON.stringify({ ...payload, ...(requestId ? { requestId } : {}), visitorToken: guestToken() }),
   });
   if (result.errors?.length) throw new Error(result.errors.map(e => e.message).join(' / '));
   if (!result.data) throw new Error('AWS ไม่ส่งข้อมูลกลับ');
