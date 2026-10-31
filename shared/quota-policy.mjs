@@ -45,8 +45,10 @@ export function quotaKeysForSpend(kind, modelId, now = new Date()) {
 }
 export function allQuotaKeysForRead(now = new Date()) {
   const values = [];
+  const period = periods(now);
   for (const kind of Object.keys(GLOBAL_QUOTAS)) {
-    values.push(...quotaKeysForSpend(kind, undefined, now));
+    values.push({ pk:'GLOBAL#DAY', sk:period.day + '#' + kind });
+    values.push({ pk:'GLOBAL#MONTH', sk:period.month + '#' + kind });
   }
   for (const modelId of Object.keys(CHAT_MODEL_QUOTAS)) {
     const items = quotaKeysForSpend('chat', modelId, now);
