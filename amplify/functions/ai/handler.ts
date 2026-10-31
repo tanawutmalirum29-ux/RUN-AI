@@ -94,12 +94,21 @@ async function ask(sub: string, p: ActionPayload) {
   const history = Array.isArray(p.history) ? p.history.slice(-10)
     .filter(x => ['user', 'assistant'].includes(x.role) && typeof x.text === 'string')
     .map(x => ({ role: x.role, content: [{ text: x.text.slice(0, 3500) }] })) : [];
+  // Bedrock Converse requires the first message to be a user turn.
+  // Skip welcome messages and prior failures, then combine adjacent turns.
+  while (history.length && history[0].role !== 'user') history.shift();
+  const validHistory: typeof history = [];
+  for (const message of history) {
+    const last = validHistory[validHistory.length - 1];
+    if (last?.role === message.role) last.content.push(...message.content);
+    else validHistory.push(message);
+  }
   const content: any[] = [{ text: prompt }];
   if (bytes) content.push({ image: { format: 'jpeg', source: { bytes } } });
   const response = await textAI.send(new ConverseCommand({
     modelId: 'amazon.nova-lite-v1:0',
     system: [{ text: 'You are RUN AI, a useful creative studio assistant. Reply in the same language as the user. Be accurate and do not pretend to see unprovided media.' }],
-    messages: [...history, { role: 'user', content }] as any,
+    messages: [...validHistory, { role: 'user', content }] as any,
     inferenceConfig: { maxTokens: 1100, temperature: 0.6 },
   }));
   const answer = (response.output?.message?.content || []).map(x => x.text || '').join('\n');
