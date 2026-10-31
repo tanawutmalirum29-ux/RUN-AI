@@ -10,6 +10,11 @@ import { cloudConfigured, runCloud } from './service';
 import { deleteAsset, downloadBlob, listAssets, photoBytes, saveAsset } from './db';
 import ImageEditor from './ImageEditor';
 import { buildConversation } from '../shared/chat-history.mjs';
+import {
+  DEFAULT_LOCAL_MODEL, DEFAULT_CLOUD_MODEL, LOCAL_MODELS, CLOUD_MODELS,
+  getLocalModel, selectCloudModel, cloudModelAvailable,
+} from '../shared/model-catalog.mjs';
+import { createBrowserModelRuntime } from './browser-engine.mjs';
 
 const sections = [
   { id: 'home', title: 'ภาพรวม', icon: Layers3 },
@@ -21,7 +26,7 @@ const sections = [
   { id: 'settings', title: 'ตั้งค่าระบบ', icon: Settings2 },
 ];
 const starters = ['ช่วยวางแผนสร้างเกมของฉัน', 'เขียน JSON เนื้อเรื่องอนิเมชัน', 'ช่วยตรวจโค้ด JavaScript', 'คิดพรอมต์สร้างภาพแฟนตาซี'];
-const initialMessages = [{ role: 'assistant', text: 'สวัสดี ยินดีต้อนรับสู่ RUN AI\nเลือก Browser AI เพื่อรันโมเดลภายในเครื่อง หรือ AWS AI เพื่อใช้ Amazon Bedrock หลังตั้งค่า Cloud Backend', time: Date.now() }];
+const initialMessages = [{ role: 'assistant', text: 'สวัสดี ยินดีต้อนรับสู่ RUN AI\nเลือก Browser AI เพื่อใช้โมเดลในอุปกรณ์ หรือ Cloud/API เพื่อทดลอง Nova, Qwen, DeepSeek และ Dolphin', time: Date.now() }];
 function assetIcon(type) {
   if (type?.startsWith('image/')) return FileImage;
   if (type?.startsWith('video/')) return Film;
@@ -49,6 +54,15 @@ export default function App({ user, signOut }) {
   const [page, setPage] = useState('chat');
   const [navOpen, setNavOpen] = useState(false);
   const [mode, setMode] = useState(stored('run-ai-mode', 'browser'));
+  const [localModel, setLocalModel] = useState(() => {
+    const previous = stored('run-ai-local-model', DEFAULT_LOCAL_MODEL);
+    return getLocalModel(previous) ? previous : DEFAULT_LOCAL_MODEL;
+  });
+  const [apiModel, setApiModel] = useState(() => {
+    const previous = stored('run-ai-api-model', DEFAULT_CLOUD_MODEL);
+    return CLOUD_MODELS.some(m => m.id === previous) ? previous : DEFAULT_CLOUD_MODEL;
+  });
+  const [modelLoading, setModelLoading] = useState(false);
   const [messages, setMessages] = useState(stored('run-ai-chat', initialMessages).slice(-30));
   const [chatText, setChatText] = useState('');
   const [imagePrompt, setImagePrompt] = useState('');
@@ -77,6 +91,8 @@ export default function App({ user, signOut }) {
   const notify = text => setAlert(text);
   useEffect(() => { const t = setTimeout(() => setAlert(''), 4800); return () => clearTimeout(t); }, [alert]);
   useEffect(() => { localStorage.setItem('run-ai-mode', JSON.stringify(mode)); }, [mode]);
+  useEffect(() => { localStorage.setItem('run-ai-local-model', JSON.stringify(localModel)); }, [localModel]);
+  useEffect(() => { localStorage.setItem('run-ai-api-model', JSON.stringify(apiModel)); }, [apiModel]);
   useEffect(() => { localStorage.setItem('run-ai-chat', JSON.stringify(messages.slice(-30))); }, [messages]);
   useEffect(() => { if (videoJob) localStorage.setItem('run-ai-video-job', JSON.stringify(videoJob)); }, [videoJob]);
   useEffect(() => { listAssets().then(x => setAssets(x.sort((a,b) => b.created - a.created))).catch(() => notify('เบราว์เซอร์ไม่อนุญาตให้เปิดคลังไฟล์')); }, [reload]);
@@ -84,6 +100,9 @@ export default function App({ user, signOut }) {
   useEffect(() => { if (page === 'chat') chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, busy, page]);
 
   const cloudReady = Boolean(cloudStatus?.configured);
+  const currentLocal = getLocalModel(localModel) || LOCAL_MODELS[0];
+  const currentCloud = selectCloudModel(apiModel);
+  const providerReady = cloudModelAvailable(currentCloud, cloudStatus);
   function openPage(id) { setPage(id); setNavOpen(false); }
   function startUpload(target = page) {
     setPage(target);
@@ -101,20 +120,28 @@ export default function App({ user, signOut }) {
     if (list.length) { setReload(x => x + 1); notify('บันทึกไฟล์ในเบราว์เซอร์แล้ว (ยังไม่ได้อัปโหลดขึ้น AWS)'); }
     if (fileRef.current) fileRef.current.value = '';
   }
-  async function loadEngine() {
-    if (engine.current) return engine.current;
-    if (!navigator.gpu) throw new Error('อุปกรณ์หรือเบราว์เซอร์นี้ไม่รองรับ WebGPU — ให้ใช้ Chrome เวอร์ชันใหม่บนอุปกรณ์ที่มี GPU หรือเลือก AWS AI');
-    setBrowserProgress('กำลังโหลดระบบ WebLLM...');
-    const webllm = await import('@mlc-ai/web-llm');
-    const model = 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC';
-    if (!webllm.prebuiltAppConfig.model_list.some(m => m.model_id === model)) throw new Error('ไม่พบโมเดลตัวอย่างใน WebLLM เวอร์ชันนี้');
-    const result = await webllm.CreateMLCEngine(model, { initProgressCallback: e => setBrowserProgress(e.text || 'กำลังดาวน์โหลดโมเดล...') });
-    engine.current = result;
-    setBrowserProgress('ดาวน์โหลดโมเดลสำเร็จ');
-    return result;
+  async function loadEngine(modelId = localModel) {
+    if (!navigator.gpu) throw new Error('อุปกรณ์/เบราว์เซอร์ไม่รองรับ WebGPU เลือกเครื่องที่รองรับ หรือใช้ Cloud/API');
+    if (!engine.current) engine.current = createBrowserModelRuntime();
+    setModelLoading(true);
+    setBrowserProgress('กำลังเตรียมโมเดล...');
+    try {
+      const loaded = await engine.current.load(modelId, message => setBrowserProgress(message));
+      setBrowserProgress((getLocalModel(modelId)?.label || modelId) + ' พร้อมใช้งาน');
+      return loaded;
+    } catch (error) {
+      setBrowserProgress('โหลดโมเดลไม่สำเร็จ');
+      throw error;
+    } finally { setModelLoading(false); }
+  }
+  async function changeLocalModel(modelId) {
+    if (busy || chatSending.current || modelLoading || !getLocalModel(modelId)) return;
+    setLocalModel(modelId);
+    try { await loadEngine(modelId); }
+    catch (error) { notify('เปลี่ยนโมเดลไม่สำเร็จ: ' + error.message); }
   }
   async function sendChat(text = chatText) {
-    if (chatSending.current || busy) return;
+    if (chatSending.current || busy || modelLoading) return;
     if (!text.trim() && !attachment) return;
     // A ref lock applies synchronously, before React renders busy state.
     chatSending.current = true;
@@ -128,6 +155,7 @@ export default function App({ user, signOut }) {
     setChatText('');
     const file = attachment; setAttachment(null);
     setBusy('chat');
+    setBrowserProgress('');
     try {
       let answer;
       let textFile = '';
@@ -135,7 +163,7 @@ export default function App({ user, signOut }) {
       if (file?.type === 'application/pdf') throw new Error('ขณะนี้ไฟล์ PDF เก็บในคลังได้ แต่ยังไม่มีตัวอ่าน PDF สำหรับ AI กรุณาแปลงเป็น TXT ก่อน');
       if (mode === 'browser') {
         if (file?.type.startsWith('image/') || file?.type.startsWith('video/')) throw new Error('Browser AI รุ่นทดลองเป็นโมเดลข้อความเท่านั้น ภาพและเฟรมวิดีโอต้องเลือก AWS AI');
-        const local = await loadEngine();
+        const local = await loadEngine(localModel);
         const chatMessages = buildConversation(prior, prompt + textFile, {
           maxHistoryMessages: 10, maxCharsPerHistoryMessage: 3000,
         });
@@ -145,10 +173,13 @@ export default function App({ user, signOut }) {
         answer = out.choices?.[0]?.message?.content || 'ไม่พบข้อความตอบกลับ';
       } else {
         const image = file && (file.type.startsWith('image/') || file.type.startsWith('video/')) ? await photoBytes(file) : '';
-        const res = await runCloud('chat', { prompt: prompt + textFile, history: prior, image });
+        const selected = selectCloudModel(apiModel);
+        if (image && !selected.supportsImage) throw new Error('โมเดล ' + selected.label + ' ไม่รองรับรูปภาพ');
+        if (!cloudModelAvailable(selected, cloudStatus)) throw new Error('ผู้ให้บริการ ' + selected.provider + ' ยังไม่พร้อม โปรดดูที่ตั้งค่าระบบ');
+        const res = await runCloud('chat', { prompt: prompt + textFile, history: prior, image, model: apiModel });
         answer = res.text;
       }
-      setMessages(x => [...x, { role: 'assistant', text: String(answer), time: Date.now() }]);
+      setMessages(x => [...x, { role: 'assistant', text: String(answer), time: Date.now(), model: mode === 'browser' ? localModel : apiModel }]);
     } catch (e) {
       setMessages(x => [...x, { role: 'assistant', text: 'ไม่สำเร็จ: ' + e.message, error: true, time: Date.now() }]);
     } finally { chatSending.current = false; setBusy(''); }
@@ -231,19 +262,40 @@ export default function App({ user, signOut }) {
             {id:'video',icon:Film,title:'Video Studio',detail:'สร้างวิดีโอจากข้อความหรือรูป',mark:'AWS AI',cls:'blue'},
             {id:'files',icon:FolderOpen,title:'File Workspace',detail:'เก็บ ดู และดาวน์โหลดไฟล์',mark:'Local · ฟรี',cls:'green'},
           ].map(({id,icon:Icon,title,detail,mark,cls}) => <button key={id} className="tool-card" onClick={() => openPage(id)}><span className={'tool-icon '+cls}><Icon size={23}/></span><ChevronRight className="card-arrow" size={18}/><strong>{title}</strong><small>{detail}</small><span className="tool-mark">{mark}</span></button>)}</div>
-          <div className="info-strip"><CircleHelp size={20}/><span><strong>ทดลองฟรีได้ทันที:</strong> Browser AI (ต้องรองรับ WebGPU และดาวน์โหลดโมเดล), แต่งภาพ และคลังไฟล์ ส่วน AI สร้างภาพและวิดีโอจะใช้งานได้หลังเปิด AWS Bedrock</span><button onClick={() => openPage('settings')}>ดูการตั้งค่า <ArrowRight size={15}/></button></div>
+          <div className="info-strip"><CircleHelp size={20}/><span><strong>ทดลองฟรีได้ทันที:</strong> Browser AI (ต้องรองรับ WebGPU และดาวน์โหลดโมเดล), แต่งภาพ และคลังไฟล์ ส่วนแชตผ่าน Nova/OpenRouter และการสร้างภาพ/วิดีโอมีค่าใช้จ่ายและต้องเปิดสิทธิ์โมเดล</span><button onClick={() => openPage('settings')}>ดูการตั้งค่า <ArrowRight size={15}/></button></div>
         </>}
         {page === 'chat' && <div className="chat-page">
           <div className="section-head chat-heading"><div><p className="eyebrow">INTELLIGENCE / CHAT</p><h1>AI Conversation <span className="title-sparkle">✦</span></h1><p className="subtle">ถามเรื่องอะไรก็ได้ ส่งภาพให้วิเคราะห์ หรือส่งไฟล์ข้อความประกอบ</p></div><button className="btn ghost small" onClick={clearChat}><SquarePen size={16}/> เริ่มแชตใหม่</button></div>
-          <div className="chat-toolbar"><div className="tabs">{[['browser','Browser AI · ฟรี'],['cloud','AWS Bedrock']].map(([v,t]) => <button key={v} className={mode===v ? 'active':''} onClick={() => setMode(v)}>{t}</button>)}</div><span className="model-hint">{mode==='browser'?'Qwen2.5 0.5B · WebGPU': 'Nova Lite · Vision'}</span></div>
-          {mode==='browser' && <div className="inline-tip"><Monitor size={16}/> โมเดลทำงานบน GPU ของอุปกรณ์และดาวน์โหลดครั้งแรกประมาณ 1 GB; ไม่รองรับภาพ/วิดีโอ และอาจใช้ไม่ได้บนมือถือบางรุ่น</div>}
+          <div className="chat-toolbar"><div className="tabs">{[['browser','Browser AI · ฟรี'],['cloud','Cloud / API']].map(([v,t]) => <button key={v} disabled={!!busy || modelLoading} className={mode===v ? 'active':''} onClick={() => setMode(v)}>{t}</button>)}</div><span className="model-hint">{mode==='browser'?'ประมวลผลด้วย WebGPU':'API ผ่าน AWS Lambda'}</span></div>
+          <div className="model-picker">
+            <div className="model-picker-head"><label htmlFor="run-ai-model">เลือกโมเดล AI</label><span className="model-picker-provider">{mode==='browser'?'รันบนอุปกรณ์ · ไม่มีค่า API':'รันผ่าน API · ใช้โควตารวมของเว็บ'}</span></div>
+            <select id="run-ai-model" className="form-input model-select" value={mode==='browser'?localModel:apiModel}
+              disabled={!!busy || modelLoading}
+              onChange={e => mode==='browser' ? changeLocalModel(e.target.value) : setApiModel(e.target.value)}>
+              {mode==='browser'
+                ? LOCAL_MODELS.map(m=><option key={m.id} value={m.id}>{m.label} · GPU ≈ {(m.vramMB/1024).toFixed(1)} GB{m.style==='เปิดกว้าง'?' · Open':''}</option>)
+                : <>
+                    <optgroup label="Amazon Bedrock">{CLOUD_MODELS.filter(m=>m.provider==='bedrock').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
+                    <optgroup label="OpenRouter API">{CLOUD_MODELS.filter(m=>m.provider==='openrouter').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
+                  </>}
+            </select>
+            <div className="model-picker-detail">
+              <span className={'model-style '+((mode==='browser'?currentLocal.style:currentCloud.style)==='Uncensored'?'special':'')}>{mode==='browser'?currentLocal.style:currentCloud.style}</span>
+              <span>{mode==='browser'?currentLocal.description:currentCloud.description}</span>
+            </div>
+            {mode==='browser'
+              ? <div className="model-picker-note"><Monitor size={15}/>{modelLoading ? <span>{browserProgress || 'กำลังโหลดโมเดล...'}</span> : <span>ต้องมี WebGPU และหน่วยความจำ GPU ราว {(currentLocal.vramMB/1024).toFixed(1)} GB ขึ้นไป (โดยประมาณ); ครั้งแรกต้องดาวน์โหลดโมเดล</span>}</div>
+              : <div className={'model-picker-note '+(!providerReady?'not-ready':'')}><Cloud size={15}/>{currentCloud.provider==='openrouter'&&!cloudStatus?.openrouterEnabled
+                  ? <span>OpenRouter ยังไม่เชื่อม API Key ใน AWS — ไปที่ตั้งค่าระบบเพื่อดูวิธีเปิดใช้ Dolphin, Qwen และ DeepSeek</span>
+                  : <span>{providerReady?'เชื่อมต่อ Backend แล้ว (สิทธิ์โมเดลตรวจตอนเรียกจริง)':'Cloud API ยังไม่พร้อม'} · {currentCloud.supportsImage?'รองรับส่งรูป':'ข้อความเท่านั้น'} · มีค่าใช้จ่ายและโควตารวม</span>}</div>}
+          </div>
           <div className="chat-stream">
-            {messages.map((m,i) => <div key={i} className={'message ' + (m.role==='user'?'from-user':'from-ai') + (m.error?' is-error':'')}><div className="message-avatar">{m.role === 'user' ? 'YOU' : <Aperture size={17}/>}</div><div className="message-body"><div className="message-meta">{m.role === 'user' ? 'คุณ' : 'RUN AI'} <span>{new Date(m.time).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</span></div><div className="message-text">{m.text}</div>{m.role === 'assistant' && !m.error && <button className="mini-link" onClick={() => { navigator.clipboard?.writeText(m.text); notify('คัดลอกข้อความแล้ว'); }}>คัดลอกข้อความ</button>}</div></div>)}
+            {messages.map((m,i) => <div key={i} className={'message ' + (m.role==='user'?'from-user':'from-ai') + (m.error?' is-error':'')}><div className="message-avatar">{m.role === 'user' ? 'YOU' : <Aperture size={17}/>}</div><div className="message-body"><div className="message-meta">{m.role === 'user' ? 'คุณ' : 'RUN AI'} {m.model && <span className="message-model">{mode === 'browser' ? (getLocalModel(m.model)?.label || CLOUD_MODELS.find(z=>z.id===m.model)?.label || m.model) : (CLOUD_MODELS.find(z=>z.id===m.model)?.label || getLocalModel(m.model)?.label || m.model)}</span>} <span>{new Date(m.time).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</span></div><div className="message-text">{m.text}</div>{m.role === 'assistant' && !m.error && <button className="mini-link" onClick={() => { navigator.clipboard?.writeText(m.text); notify('คัดลอกข้อความแล้ว'); }}>คัดลอกข้อความ</button>}</div></div>)}
             {busy==='chat' && <div className="message from-ai"><div className="message-avatar"><Aperture size={17}/></div><div className="message-body"><div className="typing"><span/><span/><span/></div><small className="subtle">{browserProgress || 'กำลังประมวลผลคำตอบ...'}</small></div></div>}
             <div ref={chatEnd}/>
           </div>
           {messages.length < 3 && <div className="suggestions">{starters.map(x => <button key={x} onClick={() => sendChat(x)}>{x} <ArrowRight size={14}/></button>)}</div>}
-          <div className="composer">{attachment && <div className="attachment-chip"><File size={15}/><span>{attachment.name}</span><button onClick={() => setAttachment(null)} aria-label="ลบไฟล์"><X size={14}/></button></div>}<textarea rows="2" value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey){e.preventDefault();sendChat();} }} placeholder="พิมพ์ข้อความถึง RUN AI... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"/><div className="composer-bottom"><div className="row"><button className="icon-button" title="แนบรูป วิดีโอ หรือไฟล์" onClick={() => fileRef.current?.click()}><Plus size={20}/></button><button className="icon-button" title="พูดเป็นข้อความ" onClick={recordVoice}><Mic size={19} className={micActive ? 'listening':''}/></button><span className="subtle composer-hint">ไฟล์อยู่ในเครื่องจนกว่าจะส่งไปยัง AI</span></div><button className="send-button" disabled={!!busy || (!chatText.trim() && !attachment)} onClick={() => sendChat()}>{busy==='chat'?<LoaderCircle className="spin" size={19}/>:<Send size={18}/>}</button></div></div>
+          <div className="composer">{attachment && <div className="attachment-chip"><File size={15}/><span>{attachment.name}</span><button onClick={() => setAttachment(null)} aria-label="ลบไฟล์"><X size={14}/></button></div>}<textarea rows="2" value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey){e.preventDefault();sendChat();} }} placeholder="พิมพ์ข้อความถึง RUN AI... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"/><div className="composer-bottom"><div className="row"><button className="icon-button" title="แนบรูป วิดีโอ หรือไฟล์" onClick={() => fileRef.current?.click()}><Plus size={20}/></button><button className="icon-button" title="พูดเป็นข้อความ" onClick={recordVoice}><Mic size={19} className={micActive ? 'listening':''}/></button><span className="subtle composer-hint">ไฟล์อยู่ในเครื่องจนกว่าจะส่งไปยัง AI</span></div><button className="send-button" disabled={!!busy || modelLoading || (mode==='cloud' && !providerReady) || (!chatText.trim() && !attachment)} onClick={() => sendChat()}>{busy==='chat'?<LoaderCircle className="spin" size={19}/>:<Send size={18}/>}</button></div></div>
         </div>}
         {page === 'image' && <><div className="section-head"><div><p className="eyebrow">GENERATIVE / IMAGE</p><h1>Image Studio</h1><p className="subtle">สร้างภาพจริงด้วย Stable Image Core บน Amazon Bedrock</p></div><span className="model-pill"><Sparkles size={15}/> Stable Image Core</span></div>
           <div className="studio-grid"><div className="studio-form"><div className="card-panel"><h3>อธิบายภาพที่ต้องการ</h3><p className="subtle">ยิ่งระบุรายละเอียดชัด ผลลัพธ์ยิ่งตรงกับจินตนาการ</p><PromptInput value={imagePrompt} onChange={setImagePrompt} rows={6} placeholder="ตัวอย่าง: เมืองลอยฟ้าเหนือเมฆในยามเย็น แสงทองส่องผ่านหอคอย สไตล์แฟนตาซี cinematic, highly detailed..."/><label className="field-label">สิ่งที่ไม่ต้องการในภาพ</label><input className="form-input" value={imageNegative} onChange={e=>setImageNegative(e.target.value)} placeholder="blurry, low quality, extra limbs..."/><label className="field-label">อัตราส่วนภาพ</label><div className="choice-row">{['1:1','16:9','9:16','3:2','2:3'].map(v=><button key={v} className={'choice '+(imageAspect===v?'active':'')} onClick={()=>setImageAspect(v)}>{v}</button>)}</div><button className="btn primary full" disabled={!!busy || !imagePrompt.trim()} onClick={generateImage}>{busy==='image'?<LoaderCircle className="spin" size={18}/>:<WandSparkles size={18}/>} สร้างภาพด้วย AI <ArrowRight size={16}/></button><p className="micro-note">ใช้ Cloud AI · มีค่าใช้จ่ายต่อการสร้าง · จำกัด 2 ครั้ง/ทั้งเว็บ/วัน (8 ครั้ง/เดือน)</p></div></div>
@@ -261,9 +313,9 @@ export default function App({ user, signOut }) {
         </>}
         {page === 'editor' && <><div className="section-head"><div><p className="eyebrow">CREATIVE / LOCAL TOOLS</p><h1>Image Editor</h1><p className="subtle">ปรับแสง สี คอนทราสต์ หมุนและกลับภาพ โดยไม่ต้องจ่ายค่า AI</p></div><button className="btn secondary" onClick={()=>openPage('files')}><FolderOpen size={16}/> เปิดคลังไฟล์</button></div>{!editing && assets.some(a=>a.type.startsWith('image/'))&&<div className="choice-files">{assets.filter(a=>a.type.startsWith('image/')).slice(0,8).map(a=><button key={a.id} onClick={()=>setEditing(a.file)}><AssetThumb item={a}/><span>{a.name}</span></button>)}</div>}<ImageEditor file={editing} onSave={()=>setReload(x=>x+1)} notify={notify}/></>}
         {page === 'settings' && <><div className="section-head"><div><p className="eyebrow">CONFIGURATION</p><h1>AI & Cloud Settings</h1><p className="subtle">ตรวจสถานะของ AWS, โมเดล และข้อจำกัดค่าใช้จ่าย</p></div><button className="btn secondary" onClick={async()=>{try{setCloudStatus(await runCloud('status'));notify('อัปเดตสถานะ Cloud แล้ว');}catch(e){notify(e.message);}}}><RefreshCw size={16}/> ตรวจใหม่</button></div>
-          <div className="setting-grid"><div className="card-panel"><div className="setting-head"><Cloud size={22}/><h3>Cloud Backend</h3></div><div className="setting-line"><span>AWS Amplify Gen 2</span><b className={cloudConfigured?'positive':'muted'}>{cloudConfigured?'เชื่อมต่อแล้ว':'ยังไม่เชื่อมต่อ'}</b></div><div className="setting-line"><span>Paid Bedrock API</span><b className={cloudReady?'positive':'muted'}>{cloudReady?'เปิดใช้สำหรับทดลอง':'ยังล็อกอยู่'}</b></div><div className="setting-line"><span>ระบบผู้เยี่ยมชม</span><b>เปิดเว็บได้ทันที</b></div>{cloudStatus?.error&&<p className="error-note">{cloudStatus.error}</p>}<p className="micro-note">ถ้าไม่มี Cloud ให้เชื่อม GitHub repository นี้กับ AWS Amplify Hosting และ Deploy ก่อน</p></div>
+          <div className="setting-grid"><div className="card-panel"><div className="setting-head"><Cloud size={22}/><h3>Cloud Backend</h3></div><div className="setting-line"><span>AWS Amplify Gen 2</span><b className={cloudConfigured?'positive':'muted'}>{cloudConfigured?'เชื่อมต่อแล้ว':'ยังไม่เชื่อมต่อ'}</b></div><div className="setting-line"><span>Paid Bedrock API</span><b className={cloudReady?'positive':'muted'}>{cloudReady?'เปิดใช้สำหรับทดลอง':'ยังล็อกอยู่'}</b></div><div className="setting-line"><span>ระบบผู้เยี่ยมชม</span><b>เปิดเว็บได้ทันที</b></div><div className="setting-line"><span>OpenRouter (Qwen/DeepSeek/Dolphin)</span><b className={cloudStatus?.openrouterEnabled?'positive':'muted'}>{cloudStatus?.openrouterEnabled?'เชื่อมต่อแล้ว':'ต้องตั้งค่า Secret'}</b></div>{cloudStatus?.error&&<p className="error-note">{cloudStatus.error}</p>}<p className="micro-note">ถ้าไม่มี Cloud ให้เชื่อม GitHub repository นี้กับ AWS Amplify Hosting และ Deploy ก่อน</p></div>
           <div className="card-panel"><div className="setting-head"><Shield size={22}/><h3>ป้องกันค่าใช้จ่าย</h3></div><div className="setting-line"><span>Chat / วัน</span><b>12 requests</b></div><div className="setting-line"><span>สร้างภาพ / วัน</span><b>2 requests</b></div><div className="setting-line"><span>สร้างวิดีโอ / เดือน</span><b>1 request</b></div><p className="micro-note">AI แบบเสียเงินเปิดสำหรับทดลองพร้อมโควตารวมทั้งเว็บ 12 แชต/วัน 2 ภาพ/วัน 1 วิดีโอ/เดือน (ความยาว 5 วินาที); ตั้งค่า AWS Budgets ด้วย</p></div>
-          <div className="card-panel wide"><div className="setting-head"><Code2 size={22}/><h3>ระบบ Cloud AI สำหรับผู้เยี่ยมชม</h3></div><p>ไม่ต้องล็อกอินหรือใส่คีย์ AWS ที่หน้าเว็บ Cloud AI ใช้โควตาแบบรวม หากต้องการปิดการเรียกโมเดลเสียเงิน ให้ตั้งตัวแปรฝั่ง Amplify แล้ว Deploy ใหม่:</p><pre>RUN_AI_ENABLE_BEDROCK=0</pre><p className="micro-note">Amazon Bedrock / AWS Marketplace ต้องอนุญาตโมเดล และมีค่าบริการตามจริง แม้เปิดเว็บแบบไม่ล็อกอิน ลิงก์เว็บไซต์ไม่ใช่รหัสผ่าน ควรตั้ง AWS Budget Alarm</p><div className="row wrap">{signOut && <button className="btn ghost" onClick={signOut}>ออกจากระบบ</button>}<a className="btn secondary" href="https://github.com/tanawutmalirum29-ux/RUN-AI#setup" target="_blank" rel="noreferrer"><BookOpen size={16}/> อ่านวิธีติดตั้ง</a></div></div></div>
+          <div className="card-panel wide"><div className="setting-head"><Code2 size={22}/><h3>ระบบ Cloud AI สำหรับผู้เยี่ยมชม</h3></div><p>ไม่ต้องล็อกอินหรือใส่คีย์ AWS ที่หน้าเว็บ Cloud AI ใช้โควตาแบบรวม หากต้องการปิดการเรียกโมเดลเสียเงิน ให้ตั้งตัวแปรฝั่ง Amplify แล้ว Deploy ใหม่:</p><pre>{'RUN_AI_ENABLE_BEDROCK=0'}</pre><p>สำหรับโมเดล API เพิ่มเติม ให้สร้าง Secret ชื่อ <code>OPENROUTER_API_KEY</code> ใน AWS Amplify → Hosting → Secrets แล้วเพิ่ม Environment variable <code>RUN_AI_USE_OPENROUTER=1</code> ก่อน Deploy อีกครั้ง</p><p className="micro-note">Amazon Bedrock / AWS Marketplace ต้องอนุญาตโมเดล และมีค่าบริการตามจริง แม้เปิดเว็บแบบไม่ล็อกอิน ลิงก์เว็บไซต์ไม่ใช่รหัสผ่าน ควรตั้ง AWS Budget Alarm</p><div className="row wrap">{signOut && <button className="btn ghost" onClick={signOut}>ออกจากระบบ</button>}<a className="btn secondary" href="https://github.com/tanawutmalirum29-ux/RUN-AI#setup" target="_blank" rel="noreferrer"><BookOpen size={16}/> อ่านวิธีติดตั้ง</a></div></div></div>
         </>}
       </div>
     </main>

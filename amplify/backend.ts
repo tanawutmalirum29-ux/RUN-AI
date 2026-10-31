@@ -38,6 +38,8 @@ lambda.addToRolePolicy(new PolicyStatement({
   actions: ['bedrock:InvokeModel', 'bedrock:StartAsyncInvoke'],
   resources: [
     'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0',
+    'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:0',
+    'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0',
     'arn:aws:bedrock:us-west-2::foundation-model/stability.stable-image-core-v1:1',
     'arn:aws:bedrock:us-west-2::foundation-model/luma.ray-v2:0',
   ],

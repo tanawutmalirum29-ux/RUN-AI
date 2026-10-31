@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { buildConversation } from '../../../shared/chat-history.mjs';
+import { DEFAULT_CLOUD_MODEL, selectCloudModel } from '../../../shared/model-catalog.mjs';
+import { toOpenRouterMessages, extractOpenRouterText } from '../../../shared/openrouter-chat.mjs';
 import { BedrockRuntimeClient, ConverseCommand, InvokeModelCommand, StartAsyncInvokeCommand, GetAsyncInvokeCommand } from '@aws-sdk/client-bedrock-runtime';
 import { DynamoDBClient, TransactWriteItemsCommand, PutItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
@@ -27,10 +29,14 @@ type ActionPayload = {
   jobId?: string;
   key?: string;
   visitorToken?: string;
+  model?: string;
 };
 
 function context() {
-  return { enabled: process.env.RUN_AI_ENABLE_BEDROCK !== '0' };
+  return {
+    enabled: process.env.RUN_AI_ENABLE_BEDROCK !== '0',
+    openrouterEnabled: process.env.RUN_AI_OPENROUTER_ENABLED === '1' && Boolean(process.env.OPENROUTER_API_KEY),
+  };
 }
 function visitorId(p: ActionPayload): string {
   const token = String(p.visitorToken || '');
@@ -90,30 +96,69 @@ async function signed(key: string) {
   return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 900 });
 }
 async function ask(sub: string, p: ActionPayload) {
+  const chosen = selectCloudModel(p.model ?? DEFAULT_CLOUD_MODEL);
   const prompt = cleanPrompt(p.prompt, 6000);
-  const bytes = inputImage(p.image);
-  // Same tested history normalization as Browser AI. Never trust UI history:
-  // it can contain greeting/error bubbles or an unanswered user turn.
+  const image = inputImage(p.image);
+  if (image && !chosen.supportsImage) throw new Error('โมเดลที่เลือกไม่รองรับรูปภาพ');
   const turns = buildConversation(p.history, prompt, {
     maxHistoryMessages: 10, maxCharsPerHistoryMessage: 3500,
   });
+  if (chosen.provider === 'openrouter') {
+    if (!context().openrouterEnabled) throw new Error('OpenRouter ยังไม่พร้อม: ตั้งค่า OPENROUTER_API_KEY ใน Amplify Secrets');
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), 45000);
+    let response: Response;
+    try {
+      response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + process.env.OPENROUTER_API_KEY,
+          'Content-Type': 'application/json',
+          'X-Title': 'RUN AI Playground',
+        },
+        body: JSON.stringify({
+          model: chosen.modelId,
+          messages: toOpenRouterMessages(turns, image ? Buffer.from(image).toString('base64') : undefined),
+          temperature: 0.6,
+          max_tokens: 900,
+          stream: false,
+        }),
+        signal: abort.signal,
+      });
+    } catch (error: any) {
+      if (error?.name === 'AbortError') throw new Error('OpenRouter ตอบช้าเกิน 45 วินาที');
+      throw new Error('ไม่สามารถเชื่อมต่อ OpenRouter ได้');
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) throw new Error('OpenRouter Key ไม่ถูกต้องหรือไม่มีสิทธิ์');
+      if (response.status === 402) throw new Error('เครดิต OpenRouter ไม่เพียงพอ');
+      if (response.status === 429) throw new Error('OpenRouter จำกัดจำนวนคำขอชั่วคราว');
+      throw new Error('OpenRouter ส่งข้อผิดพลาด HTTP ' + response.status + ' (อาจไม่มีโมเดลหรือบริการไม่พร้อม)');
+    }
+    if (Number(response.headers.get('content-length') || 0) > 250000) {
+      throw new Error('ผลลัพธ์ OpenRouter ใหญ่เกินกำหนด');
+    }
+    const responseText = await response.text();
+    if (responseText.length > 250000) throw new Error('ผลลัพธ์ OpenRouter ใหญ่เกินกำหนด');
+    let body: unknown;
+    try { body = JSON.parse(responseText); } catch { throw new Error('OpenRouter ส่งผลลัพธ์ที่ไม่ใช่ JSON'); }
+    return { text: extractOpenRouterText(body), model: chosen.id };
+  }
   const messages = turns.map(turn => ({
     role: turn.role,
     content: [{ text: turn.content }] as any[],
   }));
-  if (bytes) {
-    messages[messages.length - 1].content.push({
-      image: { format: 'jpeg', source: { bytes } },
-    });
-  }
+  if (image) messages[messages.length - 1].content.push({ image: { format: 'jpeg', source: { bytes: image } } });
   const response = await textAI.send(new ConverseCommand({
-    modelId: 'amazon.nova-lite-v1:0',
-    system: [{ text: 'You are RUN AI, a useful creative studio assistant. Reply in the same language as the user. Be accurate and do not pretend to see unprovided media.' }],
+    modelId: chosen.modelId,
+    system: [{ text: 'You are RUN AI, a creative studio assistant. Respond in the language of the user. Never pretend to have examined media that was not provided.' }],
     messages: messages as any,
     inferenceConfig: { maxTokens: 1100, temperature: 0.6 },
   }));
   const answer = (response.output?.message?.content || []).map(x => x.text || '').join('\n');
-  return { text: answer || '(โมเดลไม่ส่งข้อความกลับ)' };
+  return { text: answer || '(โมเดลไม่ส่งข้อความกลับ)', model: chosen.id };
 }
 async function createImage(sub: string, p: ActionPayload) {
   const prompt = cleanPrompt(p.prompt, 2000);
@@ -193,7 +238,7 @@ export const handler = async (event: Event): Promise<string> => {
   try { p = JSON.parse(event.arguments.payload); } catch { throw new Error('รูปแบบข้อมูล JSON ไม่ถูกต้อง'); }
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('ข้อมูลไม่ถูกต้อง');
   if (action === 'status') return JSON.stringify({
-    configured: c.enabled, allowed: true, anonymous: true,
+    configured: c.enabled, openrouterEnabled: c.openrouterEnabled, allowed: true, anonymous: true,
     models: { chat: 'Amazon Nova Lite', image: 'Stable Image Core', video: 'Luma Ray2' },
     dailyLimits, monthlyLimits,
   });
@@ -208,7 +253,11 @@ export const handler = async (event: Event): Promise<string> => {
   assertReady(c);
   if (action === 'chat') {
     const prompt = cleanPrompt(p.prompt, 6000);
-    await spend( 'chat');
+    const chosen = selectCloudModel(p.model ?? DEFAULT_CLOUD_MODEL);
+    // Validate permissions and modality before using a paid quota.
+    if (chosen.provider === 'openrouter' && !c.openrouterEnabled) throw new Error('ยังไม่ได้ตั้งค่า OpenRouter API Key ใน AWS');
+    if (p.image && !chosen.supportsImage) throw new Error('โมเดลที่เลือกไม่รองรับภาพ');
+    await spend('chat');
     return JSON.stringify(await ask(sub, { ...p, prompt }));
   }
   if (action === 'image') {
