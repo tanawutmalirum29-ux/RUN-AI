@@ -5,8 +5,9 @@ import { Effect, PolicyStatement, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Function as LambdaFunction } from 'aws-cdk-lib/aws-lambda';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { data, runAi } from './data/resource';
+import { auth } from './auth/resource';
 
-const backend = defineBackend({ data, runAi });
+const backend = defineBackend({ auth, data, runAi });
 // The resolver Lambda is grouped in the data stack. Co-locate its
 // DynamoDB and S3 resources to avoid cross-stack dependency cycles.
 const stack = backend.runAi.stack;

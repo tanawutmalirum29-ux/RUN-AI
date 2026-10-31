@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { walletKey, walletFromItem, validateAuthenticatedSub } from '../../../shared/wallet-policy.mjs';
 import { buildConversation } from '../../../shared/chat-history.mjs';
 import { DEFAULT_CLOUD_MODEL, selectCloudModel } from '../../../shared/model-catalog.mjs';
 import { GLOBAL_QUOTAS, allQuotaKeysForRead, quotaCounterKey, buildQuotaSnapshot } from '../../../shared/quota-policy.mjs';
@@ -16,7 +17,11 @@ const imageAI = new BedrockRuntimeClient({ region: 'us-west-2' });
 const videoAI = new BedrockRuntimeClient({ region: 'us-west-2' });
 const table = process.env.USAGE_TABLE!;
 const bucket = process.env.OUTPUT_BUCKET!;
-type Event = { arguments: { action: string; payload: string }; info?: { fieldName?: string } };
+type Event = {
+  arguments: { action: string; payload: string };
+  info?: { fieldName?: string };
+  identity?: { sub?: string; claims?: { sub?: string } };
+};
 type ActionPayload = {
   prompt?: string;
   history?: Array<{ role: string; text: string }>;
@@ -315,6 +320,19 @@ export const handler = async (event: Event): Promise<string> => {
   let p: ActionPayload;
   try { p = JSON.parse(event.arguments.payload); } catch { throw new Error('รูปแบบข้อมูล JSON ไม่ถูกต้อง'); }
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('ข้อมูลไม่ถูกต้อง');
+  // This action lives on runAIAccount, protected by Cognito userPool auth.
+  // The user ID is taken exclusively from AppSync-verified identity, NOT JSON.
+  if (event.info?.fieldName === 'runAIAccount') {
+    const sub = validateAuthenticatedSub(event.identity?.sub ?? event.identity?.claims?.sub);
+    if (action !== 'wallet-status') throw new Error('บัญชียังไม่รองรับคำสั่งนี้');
+    const key = walletKey(sub);
+    const result = await db.send(new GetItemCommand({
+      TableName: table,
+      Key: {pk:{S:key.pk},sk:{S:key.sk}},
+      ConsistentRead:true,
+    }));
+    return JSON.stringify(walletFromItem(result.Item));
+  }
   if (action === 'status' || action === 'quota') {
     const { quota, costGuard } = await quotaStatus();
     const allowed = costGuard.enabled;

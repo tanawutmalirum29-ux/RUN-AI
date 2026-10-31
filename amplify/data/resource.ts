@@ -26,6 +26,13 @@ const schema = a.schema({
     .returns(a.string())
     .authorization((allow) => [allow.publicApiKey()])
     .handler(a.handler.function(runAi)),
+  // Cognito authentication is mandatory here: public API key callers
+  // cannot pass a user ID and cannot access other users' wallet records.
+  runAIAccount: a.mutation()
+    .arguments({ action: a.string().required(), payload: a.string().required() })
+    .returns(a.string())
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(runAi)),
 });
 export type Schema = ClientSchema<typeof schema>;
 export const data = defineData({
