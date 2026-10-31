@@ -1,70 +1,83 @@
-# RUN AI — Personal Creative AI Playground
+# RUN AI — Creative AI Playground
 
-Responsive AI playground for AWS Amplify Gen 2, with browser experiments and optional paid Amazon Bedrock calls.
+AI experimentation studio for AWS Amplify Gen 2: chat, image generation, video generation, media inspection, uploads, local file library and local image editor.
 
-## What works
+**STATUS: EXPERIMENTAL PROTOTYPE.** AWS Amplify Hosting does not run GPU models. Paid AI features use Amazon Bedrock and can incur significant AWS charges. **Paid inference is disabled by default.**
 
-| Tool | Backend | Caveat |
-|---|---|---|
-| Text chat and code | WebLLM Qwen2.5 0.5B (WebGPU) | Free; downloads a model on your device; not all mobiles supported |
-| Chat and image/preview frame analysis | Amazon Nova Lite | Paid AWS Bedrock; off by default |
-| Text to image | Stability AI Stable Image Core | Paid AWS Bedrock; off by default |
-| Text/image to video | Luma Ray2 | Paid async AWS Bedrock; off by default |
-| Upload images, videos, audio, text, JSON, PDF | Browser IndexedDB | Local only; maximum 40 MB per file |
-| Edit images | Browser canvas | Free, local |
-| Voice dictation | Browser SpeechRecognition | Browser dependent |
+## Features
 
-PDF and audio can be stored and downloaded but *cannot yet be interpreted by the AI*. In Cloud mode, when a video is attached to chat, the app analyzes one extracted frame, not the entire video. Browser WebLLM mode only understands text. This is a prototype, not a universal model hosting server or a cloud file sync service.
+| Feature | Processing | Readiness |
+| --- | --- | --- |
+| Text chat | Browser WebLLM (Qwen2.5 0.5B) | Free; requires WebGPU, downloads model |
+| Cloud chat + image understanding | Amazon Nova Lite (Bedrock us-east-1) | Requires paid backend access |
+| Image generation | Stability Stable Image Core (Bedrock us-west-2) | Requires paid backend access |
+| Text/image-to-video | Luma Ray2 (Bedrock us-west-2) | Asynchronous, paid |
+| File library | Local IndexedDB | Store/download images, video, audio, PDF, text |
+| Image editing | Browser Canvas | Brightness, contrast, saturation, rotate, flip |
 
-## Setup
+**File limitations:** Chat accepts TXT, JSON, Markdown and CSV text plus images. Attached videos are currently converted to one *still frame* for visual analysis; full-video understanding is not implemented. PDF files can be stored, but PDF extraction is not implemented. Audio recording/transcription or audio generation is not implemented yet. The browser file library does not sync between devices.
 
-1. Open [AWS Amplify Console](https://console.aws.amazon.com/amplify/).
-2. Choose **Create new app**, connect GitHub and select repository [RUN-AI](https://github.com/tanawutmalirum29-ux/RUN-AI), branch **main**.
-3. Deploy with the included **amplify.yml**, using Amplify Gen 2. The backend build creates Cognito, AppSync, Lambda, DynamoDB and a private S3 output bucket.
-4. Amplify runs the backend before frontend build and creates a real **amplify_outputs.json**. The repository placeholder contains {} for local offline-preview only.
-5. Open your deployed URL and register using your email address (confirmation code may be needed).
-6. Test browser AI, local image editing and file storage without calling a paid AI provider.
+## Deploy on AWS Amplify
 
-**Even with Bedrock disabled, AWS backend infrastructure may incur charges.** Configure an AWS Budget and billing alerts in advance.
-
-## Enable paid AI (opt-in, not free)
-
-Verify Bedrock model availability, region, permissions, and Marketplace entitlements in your account. The sample uses:
-- Text + vision: Amazon Nova Lite (us-east-1)
-- Image: Stable Image Core (us-west-2)
-- Video: Luma Ray2 (us-west-2)
-
-In Amplify Console > App Settings > Environment variables:
+1. Open the AWS Amplify console, create an application from GitHub, select this repository and the main branch. Use Amplify Gen 2.
+2. The included amplify.yml installs packages, runs Amplify Gen 2 backend deployment, and builds the Vite web app. Node.js 22 is recommended.
+3. Once the backend deploy completes, Amplify generates amplify_outputs.json and the site presents an email login. The placeholder empty JSON in the repository is only for local preview.
+4. **Do not enable paid inference without checking AWS costs.** Create an AWS Budget notification and review quotas/model access. Stability and Luma models may require AWS Marketplace access.
+5. To activate the backend, set these environment variables in the Amplify Console and redeploy:
 
     RUN_AI_ENABLE_BEDROCK=1
-    RUN_AI_ALLOWED_EMAILS=your-verified-login@example.com
+    RUN_AI_ALLOWED_EMAILS=your-actual-login@example.com
 
-Deploy backend again. Both controls are server-side, enforced in Lambda. Only the Cognito account matching an allowlisted email can call paid models. There is a DynamoDB request quota of **40 chats, 5 images and 1 video per day**. A quota is NOT a financial hard limit and AWS Budgets only send notifications.
+   Allowed email addresses can be comma separated. These are server-side environment settings, not VITE frontend variables. Backend authorization also requires Cognito login.
+6. Log in with an allowed email. Open Settings to check configured/allowed status. Only after authorization and flag checks will inference requests run.
 
-Cloud generated files are saved privately in S3 with expiring download URLs. Files uploaded via the browser library remain on the local device and are not synchronized between devices.
+## Cloud Architecture
 
-## Local frontend preview
+- React + Vite frontend on AWS Amplify Hosting
+- Amplify Gen 2 Cognito (email auth), AppSync GraphQL custom mutation, Lambda handler
+- Amazon Nova Lite in us-east-1 for text chat and single-frame image analysis
+- Stability Stable Image Core and Luma Ray2 in us-west-2 for image/video
+- DynamoDB counters and server-side video ownership records
+- Private S3 storage for generated images and videos; short-lived signed URLs
+- Server-side per-user daily request limit (UTC day): 40 chats, 5 images, 1 video
+- The quotas are **NOT** an AWS spending cap. Invalid requests can still consume infrastructure resources.
 
-Node.js 22 recommended.
+Experimental infrastructure is currently configured for deletion on stack destruction (RemovalPolicy.DESTROY); do not use for irreplaceable data. Production requires more automated tests, retention policies, stronger rate-limit and abuse protections, and CloudWatch alarms.
 
-    git clone https://github.com/tanawutmalirum29-ux/RUN-AI.git
-    cd RUN-AI
+## Local preview
+
+Requires Node.js 22+.
+
     npm install
     npm run dev
 
-Without generated Amplify outputs, the frontend loads in local mode. For backend development, configure AWS credentials on your developer machine and run **npx ampx sandbox** followed by **npm run dev**. Never commit AWS credentials.
+The frontend can run without AWS to demonstrate UI, local file editing, and browser AI on a supported WebGPU device. Cloud chat/image/video requires AWS backend deployment and Bedrock access.
+
+    npm run build
+    npm run check
+
+The check command type-checks Amplify TypeScript. AWS integration tests must still be performed after deployment; this project does **not** promise a working Bedrock invocation without AWS permissions and enabled models.
+
+## Components
+
+- src/App.jsx — AI studio interface, browser/cloud chat, media workflows
+- src/db.js — IndexedDB file storage and video frame extraction
+- src/ImageEditor.jsx — local Canvas editor
+- src/service.js — GraphQL client
+- amplify/auth/resource.ts — Cognito auth
+- amplify/data/resource.ts — GraphQL mutation
+- amplify/functions/ai/handler.ts — Bedrock calls, quotas, signed outputs
+- amplify/backend.ts — deployment resources, IAM roles, S3 and DynamoDB
 
 ## Troubleshooting
 
-- App shows local mode only: check the Amplify Gen 2 backend build and verify generated amplify_outputs.json is nonempty.
-- Browser AI fails: WebGPU unsupported or insufficient memory; try Chrome on a stronger device.
-- Cloud AI disabled: inspect RUN_AI_ENABLE_BEDROCK, RUN_AI_ALLOWED_EMAILS, deployed Lambda env, and Cognito email.
-- Bedrock AccessDenied: check model access/Marketplace, IAM policies, and region; models may change over time.
-- Video job unavailable: review async inference status and private S3 bucket output.
-- Files disappeared: IndexedDB is local; browser storage cleanup or private mode may remove it.
+- Local preview only: Backend not deployed or amplify_outputs.json not generated.
+- Cloud AI disabled: Set both environment variables, redeploy, use allowed email.
+- Bedrock AccessDenied: Check model availability, AWS Marketplace acceptance and region.
+- WebGPU unavailable: Try supported Chrome desktop/Android with enough memory.
+- Video status stays InProgress: Luma Ray2 is async; check Bedrock jobs in AWS console.
+- Amplify build failure: Check backend logs before frontend logs, and confirm supported Node.js and AWS account permissions.
 
-## Architecture
+## Security and costs
 
-Frontend: React + Vite on Amplify Hosting. Browser mode: WebLLM + IndexedDB + Canvas. Cloud mode: Cognito login -> AppSync mutation -> Lambda with email allowlist + daily limits -> Amazon Bedrock models. DynamoDB tracks limits/ownership; S3 stores private generated media.
-
-Do not deploy as an open public paid-AI service without abuse protection, more extensive testing and hard account-spend controls. This is experimental source code.
+Never commit AWS keys, access tokens or passwords into the repository. Do not expose the Bedrock API through unauthenticated calls. Generated downloads use private S3 signed URLs that expire. AWS Amplify, Lambda, DynamoDB, S3 and Bedrock may incur charges, particularly video generation. Always configure AWS Budgets before enabling models.

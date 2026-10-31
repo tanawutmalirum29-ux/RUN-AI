@@ -7,12 +7,12 @@ import { auth } from './auth/resource';
 import { data, runAi } from './data/resource';
 
 const backend = defineBackend({ auth, data, runAi });
-const stack = backend.createStack('run-ai-data-assets');
+const stack = backend.runAi.stack;
 const usageTable = new Table(stack, 'RunAiUsageAndJobs', {
   partitionKey: { name: 'pk', type: AttributeType.STRING },
   sortKey: { name: 'sk', type: AttributeType.STRING },
   billingMode: BillingMode.PAY_PER_REQUEST,
-  removalPolicy: RemovalPolicy.DESTROY,
+  removalPolicy: RemovalPolicy.DESTROY, // experimental app; don't use for irreplaceable data
 });
 const outputBucket = new Bucket(stack, 'RunAiOutputs', {
   blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
@@ -21,14 +21,14 @@ const outputBucket = new Bucket(stack, 'RunAiOutputs', {
   autoDeleteObjects: true,
   removalPolicy: RemovalPolicy.DESTROY,
 });
-const lambda = backend.runAi.resources.lambda;
-usageTable.grantReadWriteData(lambda);
-outputBucket.grantReadWrite(lambda);
-lambda.addEnvironment('USAGE_TABLE', usageTable.tableName);
-lambda.addEnvironment('OUTPUT_BUCKET', outputBucket.bucketName);
-lambda.addEnvironment('RUN_AI_ENABLE_BEDROCK', process.env.RUN_AI_ENABLE_BEDROCK === '1' ? '1' : '0');
-lambda.addEnvironment('RUN_AI_ALLOWED_EMAILS', process.env.RUN_AI_ALLOWED_EMAILS ?? '');
-lambda.addToRolePolicy(new PolicyStatement({
+usageTable.grantReadWriteData(backend.runAi.resources.lambda);
+outputBucket.grantReadWrite(backend.runAi.resources.lambda);
+backend.runAi.addEnvironment('USAGE_TABLE', usageTable.tableName);
+backend.runAi.addEnvironment('OUTPUT_BUCKET', outputBucket.bucketName);
+backend.runAi.addEnvironment('RUN_AI_ENABLE_BEDROCK', process.env.RUN_AI_ENABLE_BEDROCK === '1' ? '1' : '0');
+backend.runAi.addEnvironment('RUN_AI_ALLOWED_EMAILS', process.env.RUN_AI_ALLOWED_EMAILS ?? '');
+
+backend.runAi.resources.lambda.addToRolePolicy(new PolicyStatement({
   effect: Effect.ALLOW,
   actions: ['bedrock:InvokeModel', 'bedrock:StartAsyncInvoke'],
   resources: [
@@ -37,11 +37,13 @@ lambda.addToRolePolicy(new PolicyStatement({
     'arn:aws:bedrock:us-west-2::foundation-model/luma.ray-v2:0',
   ],
 }));
-lambda.addToRolePolicy(new PolicyStatement({
+backend.runAi.resources.lambda.addToRolePolicy(new PolicyStatement({
   effect: Effect.ALLOW,
   actions: ['bedrock:GetAsyncInvoke'],
   resources: ['*'],
 }));
+
+// Bedrock writes asynchronously generated video into this private S3 bucket.
 outputBucket.addToResourcePolicy(new PolicyStatement({
   principals: [new ServicePrincipal('bedrock.amazonaws.com')],
   actions: ['s3:PutObject'],
