@@ -2,6 +2,9 @@ import { a, defineData, defineFunction, type ClientSchema } from '@aws-amplify/b
 
 export const runAi = defineFunction({
   name: 'run-ai-inference',
+  // Keep the AppSync resolver and Lambda in the same stack to prevent
+  // circular CloudFormation dependencies during Amplify Gen 2 deployments.
+  resourceGroupName: 'data',
   entry: '../functions/ai/handler.ts',
   timeoutSeconds: 90,
   memoryMB: 512,
