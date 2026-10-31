@@ -27,3 +27,28 @@ h1,h2,h3,p{margin-top:0}h1{font-size:clamp(26px,3.2vw,42px);letter-spacing:-1.5p
 .model-picker-note.not-ready{color:#f1c88c}
 .message-model{background:#312945;color:#bfb0ea;border-radius:5px;padding:2px 6px}
 @media(max-width:650px){.model-picker{padding:12px}.model-picker-head{align-items:flex-start}.model-picker-detail{align-items:flex-start;flex-wrap:wrap}.model-picker-provider{font-size:10px}}
+
+/* Real-time server-side quota counters */
+.quota-summary{border:1px solid #514363;background:#201c2c;padding:14px 16px;border-radius:12px;margin:12px 0 6px;color:#e4daf5}
+.quota-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px}
+.quota-head strong{display:inline-flex;align-items:center;gap:8px}
+.quota-refresh{background:#302840;color:#cbb0ff;border:1px solid #554770;border-radius:7px;display:inline-flex;align-items:center;gap:5px;padding:6px 9px;font-size:10px}
+.quota-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
+.quota-grid span,.quota-global-grid>div{background:#171521;border:1px solid #3d354d;border-radius:9px;padding:11px;min-width:0;font-size:11px;color:#a9a1bb}
+.quota-grid b{display:block;font-size:18px;color:#f4e7ff;margin-top:4px}
+.quota-grid small{display:block;color:#938aa6;font-size:10px;margin-top:6px;line-height:1.6}
+.quota-reset{display:block;color:#9188a5;margin-top:11px;font-size:10px}
+.quota-unavailable{color:#e8b2a2;font-size:11px;margin:12px 0 0}
+.quota-line{margin:12px 0 0;color:#cdb7ff;font-weight:700;font-size:12px}
+.quota-settings-card{grid-column:1/-1}
+.quota-global-grid{grid-template-columns:repeat(3,minmax(0,1fr));margin:16px 0}
+.quota-global-grid strong{display:block;color:#ded3f7}
+.quota-global-grid b{color:#afedcc}
+.quota-table-wrap{overflow-x:auto;max-width:100%}
+.quota-table{border-collapse:collapse;width:100%;font-size:11px;text-align:left;min-width:535px}
+.quota-table th{background:#302839;color:#c7b9db;font-size:10px}
+.quota-table th,.quota-table td{padding:11px 10px;border-bottom:1px solid #3b3347}
+.quota-table td{color:#bfb5ce}.quota-table td strong{color:#ece5f6}
+.quota-table .positive{color:#80d7ac}.quota-table .muted{color:#dcaa87}
+.uncensored-label{display:block;font-size:9px;color:#e5acbc;margin-top:4px}
+@media(max-width:650px){.quota-grid{grid-template-columns:1fr}.quota-global-grid{grid-template-columns:1fr}.quota-settings-card{padding:16px}}
