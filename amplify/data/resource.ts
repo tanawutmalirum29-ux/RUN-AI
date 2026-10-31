@@ -11,6 +11,12 @@ export const runAi = defineFunction({
 });
 
 const schema = a.schema({
+  // Ensure AppSync has the required GraphQL root Query type.
+  // Keep this low-cost health check on the same authenticated resolver.
+  health: a.query()
+    .returns(a.string())
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(runAi)),
   runAI: a.mutation()
     .arguments({ action: a.string().required(), payload: a.string().required() })
     .returns(a.string())

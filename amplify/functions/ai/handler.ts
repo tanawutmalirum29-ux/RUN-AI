@@ -14,7 +14,7 @@ const bucket = process.env.OUTPUT_BUCKET!;
 const limits = { chat: 40, image: 5, video: 1 } as const;
 
 type Identity = { sub?: string; claims?: Record<string, unknown> };
-type Event = { arguments: { action: string; payload: string }; identity?: Identity };
+type Event = { arguments: { action: string; payload: string }; identity?: Identity; info?: { fieldName?: string } };
 type ActionPayload = {
   prompt?: string;
   history?: Array<{ role: string; text: string }>;
@@ -158,6 +158,8 @@ async function getVideo(sub: string, p: ActionPayload) {
   return { status: 'Completed', key: video.Key, url: await signed(video.Key) };
 }
 export const handler = async (event: Event): Promise<string> => {
+  // Query.health is a read-only readiness check, not paid inference.
+  if (event.info?.fieldName === 'health') return 'RUN-AI API ready';
   const c = context(event);
   const action = event.arguments.action;
   if (!event.arguments.payload || event.arguments.payload.length > 780_000) throw new Error('ข้อมูลที่ส่งใหญ่เกิน 780 KB');
