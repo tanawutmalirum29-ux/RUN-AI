@@ -69,3 +69,11 @@ The existing **12 chat/day and 60 chat/month global web quota is SHARED between 
 - Limits count **accepted attempts, even if the model provider returns an error**, because upstream providers may charge for attempts. These are request caps, not real-money budget limits.
 - Limits reset at midnight UTC (07:00 in Thailand). Upstream provider credits/rate limits remain separate.
 - Added Mistral Small 3.2, Gemma 3 27B, Llama 3.3 70B, Hermes 4 70B, Dolphin 3.0 Mistral, Dolphin 3.0 R1, Dolphin Llama 3 70B (provider-labelled uncensored). Venice Uncensored remains. These OpenRouter API modules require a server-side API key and flag.
+
+
+## Finance safety and the business roadmap
+
+- [Finance safety setup and emergency stop](FINANCE_SETUP.md): DynamoDB switch, USD-denominated risk reservations, AWS Budgets, provider limits and live test steps.
+- [Monetization roadmap](MONETIZATION_ROADMAP.md): stages and security gates for identity, wallets, checkout and launch.
+- Internal risk allowance defaults to $3/day and $15/month across the website. These are NOT actual AWS bills or guaranteed spending ceilings. Paid video is disabled by default.
+- No payment or credit sale is implemented. Do not accept payments until an authenticated credit ledger and verified payment webhooks are available.

@@ -52,3 +52,11 @@ h1,h2,h3,p{margin-top:0}h1{font-size:clamp(26px,3.2vw,42px);letter-spacing:-1.5p
 .quota-table .positive{color:#80d7ac}.quota-table .muted{color:#dcaa87}
 .uncensored-label{display:block;font-size:9px;color:#e5acbc;margin-top:4px}
 @media(max-width:650px){.quota-grid{grid-template-columns:1fr}.quota-global-grid{grid-template-columns:1fr}.quota-settings-card{padding:16px}}
+
+/* Finance safety: read-only on the public anonymous website. */
+.finance-guard-card{grid-column:1/-1}
+.finance-risk-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.quota-risk-mini{margin-top:10px;padding:10px;border-radius:8px;background:#161321;border:1px solid #3b334b}
+.quota-risk-mini strong{display:block;font-size:11px;color:#d8c4fd}
+.quota-risk-mini small{display:block;margin-top:5px;font-size:10px;color:#aea1c5;line-height:1.6}
+@media(max-width:650px){.finance-risk-grid{grid-template-columns:1fr}}
