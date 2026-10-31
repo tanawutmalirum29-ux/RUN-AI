@@ -36,7 +36,7 @@ export function buildConversation(history, prompt, options = {}) {
   if (turns[turns.length - 1]?.role === 'user') turns.pop();
 
   // Fit the context window while keeping a valid initial user turn.
-  const recent = turns.slice(-historyLimit);
+  const recent = historyLimit === 0 ? [] : turns.slice(-historyLimit);
   while (recent.length && recent[0].role !== 'user') recent.shift();
   recent.push({ role: 'user', content: prompt.trim() });
   return recent;

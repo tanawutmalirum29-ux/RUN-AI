@@ -90,3 +90,8 @@ test('Bedrock adapter from canonical turns has only valid role/content blocks',(
   assert.deepEqual(messages.map(m=>m.role),['user','assistant','user']);
   assert.equal(messages.at(-1).content[0].text,'new');
 });
+
+test('maxHistoryMessages zero means no prior context',()=>{
+  const result=buildConversation([{role:'user',text:'old'},{role:'assistant',text:'answer'}], 'new', {maxHistoryMessages:0});
+  assert.deepEqual(result,[{role:'user',content:'new'}]);
+});
