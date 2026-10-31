@@ -59,3 +59,13 @@ Prototype only; no user accounts, no dedicated private access, no CAPTCHA/WAF, n
 OpenRouter uses a fixed `https://openrouter.ai/api/v1/chat/completions` endpoint with server-side key injection and a finite model allowlist. Your prompts and attachments submitted through this API leave AWS and are sent to OpenRouter/upstream providers, subject to their privacy policies and terms. Disable OpenRouter by setting `RUN_AI_USE_OPENROUTER=0` and redeploying.
 
 The existing **12 chat/day and 60 chat/month global web quota is SHARED between Bedrock and OpenRouter**; browser-local inference consumes no paid API quota. OpenRouter may additionally enforce its own billing/rate limits. The public website link is not access protection, so manage API credits and AWS budgets.
+
+
+## Live remaining quotas (AWS DynamoDB)
+
+- The runAI status action returns strongly consistent used/remaining counts for **global plus per-cloud-model** day/month limits without invoking the models.
+- Each paid chat request atomically checks **four** counters: global day/month and model day/month. Image and video retain their existing global counters. Switching models does not reset the global pool.
+- The UI blocks paid calls when a provider is not configured, the quota is exhausted, or the live quota cannot be read; the server enforces the limits again atomically, across devices/tabs.
+- Limits count **accepted attempts, even if the model provider returns an error**, because upstream providers may charge for attempts. These are request caps, not real-money budget limits.
+- Limits reset at midnight UTC (07:00 in Thailand). Upstream provider credits/rate limits remain separate.
+- Added Mistral Small 3.2, Gemma 3 27B, Llama 3.3 70B, Hermes 4 70B, Dolphin 3.0 Mistral, Dolphin 3.0 R1, Dolphin Llama 3 70B (provider-labelled uncensored). Venice Uncensored remains. These OpenRouter API modules require a server-side API key and flag.
