@@ -116,3 +116,13 @@ test('AWS Native prompt rejects oversized requests before incurring cost',async(
  const {buildNativeBedrockRequest}=await import('../shared/native-bedrock.mjs');
  assert.throws(()=>buildNativeBedrockRequest([], 'x'.repeat(4001)),/4000/);
 });
+
+test('GitHub teaching data describes AWS Bedrock as Native default, not required Cloudflare',()=>{
+ const native=knowledge.find(x=>x.id==='native');
+ const guide=knowledge.find(x=>x.id==='howto');
+ assert.match(native.text,/AWS Bedrock/);
+ assert.match(guide.text,/Amazon Nova Micro/);
+ assert.match(guide.text,/ไม่ต้องมี Cloudflare/);
+ assert.equal(instructions.model,'amazon.nova-micro-v1:0');
+ assert.ok(examples.some(x=>x.input.includes('Cloudflare') && x.output.includes('ไม่จำเป็น')));
+});

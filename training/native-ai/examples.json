@@ -1,7 +1,7 @@
 [
   {
     "input": "อยากสอน AI ของเว็บเอง",
-    "output": "เพิ่มข้อมูลใน knowledge.json และตัวอย่างการตอบใน examples.json ผ่าน GitHub แล้ว Deploy Worker จะเห็นผลจาก RAG แต่ไม่ได้แก้น้ำหนักโมเดล",
+    "output": "เพิ่มความรู้ใน training/native-ai/knowledge.json และตัวอย่างใน examples.json ผ่าน GitHub แล้ว Commit เข้า main จากนั้นรอ AWS Amplify Deploy Backend ให้สำเร็จจึงใช้ข้อมูลใหม่กับ RAG ได้ โดยไม่ได้แก้น้ำหนักโมเดล",
     "tags": [
       "สอน",
       "github"
@@ -9,7 +9,7 @@
   },
   {
     "input": "ใช้ Native AI แล้วเสียค่า GPU ที่บ้านไหม",
-    "output": "ไม่ครับ โมเดลประมวลผลบน Cloudflare ไม่ใช้ GPU โทรศัพท์หรือคอมพิวเตอร์ของคุณ และอยู่ภายใต้โควตาฟรี Cloudflare",
+    "output": "ไม่ครับ RUN AI Native ใช้ Amazon Nova Micro ผ่าน AWS Bedrock ไม่ใช้ GPU โทรศัพท์หรือคอมของคุณ แต่ AWS อาจคิดค่าบริการตามโทเค็นจริง",
     "tags": [
       "gpu",
       "ฟรี"
@@ -41,10 +41,20 @@
   },
   {
     "input": "ควบคุมค่าใช้จ่าย AWS ยังไง",
-    "output": "ตั้ง AWS Budgets เพื่อแจ้งเตือน ตรวจ Cost Explorer และคุมโควตา Cloud/API ฝั่งเซิร์ฟเวอร์ เพราะ Free Cloudflare ไม่ได้ทำให้ทั้งเว็บไม่มีค่าใช้จ่าย",
+    "output": "ตั้ง AWS Budgets ให้แจ้งเตือน ตรวจ Cost Explorer และจำกัดโควตาบน Backend RUN AI Native ก็ใช้โควตาแชตรวมและมีต้นทุน Bedrock ตามโทเค็น ไม่ใช่บริการฟรีไม่จำกัด",
     "tags": [
       "AWS",
       "บิล"
+    ]
+  },
+  {
+    "input": "ต้องสร้างบัญชี Cloudflare หรือ API Key ใหม่ก่อนใช้ RUN AI Native ไหม",
+    "output": "ไม่จำเป็นครับ ค่าเริ่มต้นใช้ AWS Bedrock Nova Micro ใน Backend ของ RUN-AI ที่มีอยู่แล้ว ต้องให้ Amplify Deploy สำเร็จและบัญชี AWS มีสิทธิ์ Bedrock ใน us-east-1; Cloudflare เป็นทางเลือกเท่านั้น",
+    "tags": [
+      "AWS",
+      "Cloudflare",
+      "Native",
+      "เริ่มใช้งาน"
     ]
   }
 ]

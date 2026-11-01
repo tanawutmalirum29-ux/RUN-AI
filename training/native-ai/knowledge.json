@@ -8,19 +8,20 @@
       "เครื่องมือ",
       "สตูดิโอ"
     ],
-    "text": "RUN-AI เป็นเว็บสตูดิโอทดลอง AI มี Chat, สร้างภาพ, วิดีโอ, คลังไฟล์ และแต่งภาพ ผู้ใช้เลือก Browser AI หรือ Cloud/API ผ่าน AWS/OpenRouter และ RUN AI Native ที่ทำงานบน Cloudflare ได้"
+    "text": "RUN-AI เป็นเว็บสตูดิโอทดลอง AI มี AI Chat, สร้างภาพ, สร้างวิดีโอ, คลังไฟล์ และแต่งภาพ ผู้ใช้เลือก Browser AI บนอุปกรณ์, Cloud/API ผ่าน AWS Bedrock และ OpenRouter หรือ RUN AI Native ที่ใช้โมเดล Amazon Nova Micro ผ่าน AWS Bedrock เป็นค่าเริ่มต้น"
   },
   {
     "id": "native",
     "title": "RUN AI Native คืออะไร",
     "tags": [
       "native",
-      "gemma",
-      "cloudflare",
-      "github",
+      "AWS",
+      "Bedrock",
+      "GitHub",
+      "RAG",
       "เทรน"
     ],
-    "text": "RUN AI Native ใช้โมเดลฐาน Gemma 4 26B บน Cloudflare Workers AI และดึงความรู้กับคำตอบตัวอย่างที่เก็บใน GitHub มาประกอบข้อความสั่ง AI เทคนิคนี้คือ Retrieval-Augmented Generation/Few-shot ไม่ได้แก้น้ำหนักโมเดลหรือสร้างโมเดลใหม่"
+    "text": "RUN AI Native ใช้โมเดลฐาน Amazon Nova Micro บน AWS Bedrock ภูมิภาค us-east-1 ผ่าน AWS Lambda ของ RUN-AI เป็นค่าเริ่มต้น โดยนำข้อมูลความรู้และตัวอย่างคำตอบจาก GitHub มาประกอบการตอบด้วย Retrieval-Augmented Generation (RAG)/Few-shot ไม่ได้แก้น้ำหนักโมเดลจริง Cloudflare Workers AI เป็นทางเลือกถ้าผู้ดูแลเชื่อมแยกต่างหาก"
   },
   {
     "id": "training",
@@ -32,7 +33,7 @@
       "ความรู้",
       "GitHub"
     ],
-    "text": "ผู้ดูแลเพิ่มข้อมูลที่ตรวจสอบแล้วใน training/native-ai/knowledge.json และตัวอย่างใน training/native-ai/examples.json รวมถึงปรับกฎใน instructions.json จากนั้น GitHub Actions ทดสอบและ Deploy Cloudflare Worker ทำให้รุ่นใหม่อ่านความรู้ที่แก้ไขได้โดยไม่ใช้เครื่องผู้ดูแล"
+    "text": "ผู้ดูแลเพิ่มความรู้ที่ตรวจสอบแล้วใน training/native-ai/knowledge.json ตัวอย่างคำตอบใน training/native-ai/examples.json และกฎพฤติกรรมใน instructions.json จากนั้น Commit เข้า main รอ AWS Amplify Gen 2 Deploy Backend ใหม่ให้สำเร็จจึงใช้ความรู้ที่แก้ไขแล้วได้ ไม่ต้องรันเครื่องผู้ดูแลเองและยังไม่ใช่ Fine-tuning น้ำหนักโมเดล"
   },
   {
     "id": "howto",
@@ -45,7 +46,7 @@
       "ฟรี",
       "เชื่อม"
     ],
-    "text": "เลือก AI Chat แล้วกด RUN AI Native ใช้งานได้เมื่อ Cloudflare Worker Deploy แล้วและตั้งค่า VITE_RUN_AI_NATIVE_URL ของ AWS Amplify ไปยัง Worker ที่ถูกต้อง ต้องมีอินเทอร์เน็ต แต่ไม่ต้องมี WebGPU หรือดาวน์โหลดโมเดลบนมือถือ รุ่นแรกใช้แชตข้อความเท่านั้น"
+    "text": "เลือก AI Chat แล้วกด RUN AI Native เมื่อ AWS Amplify Backend Deploy สำเร็จและ Amazon Nova Micro บน Bedrock ภูมิภาค us-east-1 มีสิทธิ์เรียกใช้งาน ก็ส่งข้อความได้โดยไม่ต้องมี Cloudflare หรือ OpenRouter API Key และไม่ต้องมี WebGPU บนมือถือ ระบบจำกัดโควตา Native 6 ครั้งต่อวัน 24 ครั้งต่อเดือน รวมทั้งอยู่ใต้โควตา Cloud Chat รวม"
   },
   {
     "id": "free",
@@ -53,11 +54,11 @@
     "tags": [
       "ฟรี",
       "โควตา",
+      "Bedrock",
       "ราคา",
-      "neuron",
-      "จำกัด"
+      "AWS"
     ],
-    "text": "Cloudflare Workers AI มีโควตา Free รวม 10,000 Neurons ต่อวันต่อบัญชี ไม่ใช่ 10,000 ข้อความ จำนวนคำถามขึ้นกับความยาวโมเดลและเนื้อหา เมื่อเต็มโควตาบริการฟรีจะปฏิเสธการเรียกต่อ ไม่มีตัวเลขโควตาคงเหลือให้ RUN AI Native แสดงสดในเวอร์ชันนี้"
+    "text": "RUN AI Native ที่รันผ่าน AWS Bedrock Nova Micro ไม่ได้ใช้ฟรีไม่จำกัด โดยใช้โควตาภายใน RUN-AI 6 ครั้งต่อวันและ 24 ครั้งต่อเดือนของเว็บไซต์ และรวมกับเพดาน Cloud Chat 12 ครั้งต่อวันและ 60 ครั้งต่อเดือน ค่า Bedrock คิดตามโทเค็นจริงและขึ้นกับเครดิต AWS ของบัญชี ถ้าเลือก Cloudflare ทางเลือกจึงจะใช้โควตา Workers AI Free ตามกติกาผู้ให้บริการ"
   },
   {
     "id": "compare",
@@ -69,7 +70,7 @@
       "device",
       "เปรียบเทียบ"
     ],
-    "text": "Browser AI ใช้ GPU และหน่วยความจำของเครื่องผู้ใช้ ต้องรองรับ WebGPU ส่วน RUN AI Native ประมวลผลบน Cloudflare Workers AI และใช้เน็ต ไม่ต้องโหลดโมเดลบนอุปกรณ์ ส่วน Cloud/API ของ AWS และ OpenRouter แยกอีกระบบและอาจมีค่าใช้จ่าย"
+    "text": "Browser AI ประมวลผลบนเครื่องผู้ใช้ ต้องมี WebGPU/หน่วยความจำเหมาะสม RUN AI Native ใช้ Amazon Nova Micro ประมวลผลบน AWS Bedrock จึงไม่ต้องดาวน์โหลดโมเดลลงมือถือ แต่ต้องใช้อินเทอร์เน็ตและอยู่ภายใต้โควตา AWS Native แยกจาก Cloud/API โมเดลตัวเลือกอื่นที่อาจมีค่าใช้จ่ายสูงกว่า"
   },
   {
     "id": "privacy",
@@ -81,7 +82,7 @@
       "ปลอดภัย",
       "ความเป็นส่วนตัว"
     ],
-    "text": "อย่าใส่ API Key รหัสผ่านและข้อมูลส่วนบุคคลลงไฟล์ GitHub หรือส่งในแชต RUN AI Native ข้อความผู้ใช้จะถูกส่งไป Cloudflare เพื่อประมวลผล ชุดความรู้บน GitHub เป็นข้อมูลที่เจ้าของโปรเจกต์เผยแพร่เอง"
+    "text": "อย่าใส่ API Key รหัสผ่าน หรือข้อมูลส่วนตัวลงไฟล์ GitHub หรือข้อความแชต RUN AI Native ผู้ใช้ส่งข้อความไปยัง AWS Backend แล้ว AWS Bedrock ประมวลผล ชุดความรู้ GitHub อาจเป็นข้อมูลสาธารณะ ห้ามเก็บข้อมูลส่วนบุคคลในไฟล์สอน AI Cloudflare จะรับข้อความก็ต่อเมื่อผู้ดูแลตั้ง Worker ทางเลือกและระบบเลือกใช้งาน"
   },
   {
     "id": "aws",
@@ -93,6 +94,6 @@
       "โฮสต์",
       "ค่าใช้จ่าย"
     ],
-    "text": "RUN AI Native ใช้ Cloudflare Workers AI ฟรีภายในโควตา โดยไม่เรียก Bedrock หรือ OpenRouter แต่หน้าเว็บยังโฮสต์ AWS Amplify ซึ่งอาจมีค่า Hosting, Data transfer, Build และระบบอื่นของ RUN-AI ผู้ดูแลควรตรวจ AWS Billing แยกต่างหาก"
+    "text": "RUN AI Native ค่าเริ่มต้นใช้ Amazon Nova Micro ผ่าน AWS Bedrock ซึ่งอาจมีค่าใช้จ่ายตามโทเค็น และ AWS Amplify, Lambda, AppSync, DynamoDB ยังอาจเกิดค่าใช้จ่ายเพิ่มเติม ระบบจำกัดโควตาและกันงบความเสี่ยงเป็นเพียงเพดานคำขอ ไม่ใช่ยอด AWS Billing จริง ผู้ดูแลควรตั้ง AWS Budgets และตรวจ Cost Explorer"
   }
 ]
