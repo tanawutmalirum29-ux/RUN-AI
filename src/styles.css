@@ -60,3 +60,11 @@ h1,h2,h3,p{margin-top:0}h1{font-size:clamp(26px,3.2vw,42px);letter-spacing:-1.5p
 .quota-risk-mini strong{display:block;font-size:11px;color:#d8c4fd}
 .quota-risk-mini small{display:block;margin-top:5px;font-size:10px;color:#aea1c5;line-height:1.6}
 @media(max-width:650px){.finance-risk-grid{grid-template-columns:1fr}}
+
+/* Native AI is a separate Cloudflare provider; do not merge it into AWS quota UI. */
+.chat-toolbar{gap:12px;flex-wrap:wrap}
+.chat-toolbar .tabs{flex-wrap:wrap}
+.chat-toolbar .tabs button{white-space:nowrap}
+.native-ai-panel{border-color:#614a79;background:linear-gradient(125deg,#201a31,#191724)}
+.native-ai-panel .mini-link{display:inline-block;text-align:left;font-size:11px;color:#c7afff}
+@media(max-width:600px){.chat-toolbar{align-items:flex-start}.chat-toolbar .tabs{width:100%}.chat-toolbar .tabs button{flex:1;padding:9px 7px;font-size:10px}}
