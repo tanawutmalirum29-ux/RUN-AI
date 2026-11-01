@@ -1,5 +1,7 @@
 # RUN AI — Anonymous AI Playground
 
+**Live website:** [RUN-AI — เปิดเว็บไซต์](https://main.d36aqo2v0nijxk.amplifyapp.com)
+
 **No login required.** Deploy this React + Vite + AWS Amplify Gen 2 project from GitHub/main. Opening the website gives immediate access to Browser AI, local files, image editing, and Cloud AI (if the AWS deployment and model permissions are ready).
 
 ## How it works
