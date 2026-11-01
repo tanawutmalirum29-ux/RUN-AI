@@ -1,0 +1,17 @@
+name = "run-ai-native"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[ai]
+binding = "AI"
+
+[vars]
+ALLOWED_ORIGINS = "https://main.d36aqo2v0nijxk.amplifyapp.com"
+
+[[ratelimits]]
+name = "NATIVE_RATE_LIMITER"
+namespace_id = "12051"
+[ratelimits.simple]
+limit = 6
+period = 60
