@@ -75,3 +75,14 @@ test('premium models have stricter allowance than standard models',()=>{
   const snap=buildQuotaSnapshot({},now);
   assert.equal(snap.models['openrouter:gpt-6-astra'].remaining,2);
 });
+
+test('AWS Native has independent per-model quota but shares total chat limits',()=>{
+ assert.deepEqual(CHAT_MODEL_QUOTAS['bedrock:run-ai-native'],{day:6,month:24});
+ const plan=quotaKeysForSpend('chat','bedrock:run-ai-native',now);
+ assert.equal(plan[0].pk,'GLOBAL#DAY');
+ assert.equal(plan[1].pk,'GLOBAL#MONTH');
+ assert.equal(plan[2].pk,'MODEL#DAY');
+ assert.ok(plan[2].sk.includes('bedrock:run-ai-native'));
+ const snapshot=buildQuotaSnapshot({},now);
+ assert.equal(snapshot.models['bedrock:run-ai-native'].remaining,6);
+});

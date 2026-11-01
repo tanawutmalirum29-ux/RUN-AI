@@ -15,7 +15,7 @@ export const DEFAULT_RISK_LIMITS_CENTS = Object.freeze({ day: 300, month: 1500 }
 
 const weights = Object.fromEntries(CLOUD_MODELS.map(model => {
   // Explicit risk weights; these are NOT current model prices.
-  if (model.id === 'bedrock:nova-micro') return [model.id, 3];
+  if (model.id === 'bedrock:nova-micro' || model.id === 'bedrock:run-ai-native') return [model.id, 3];
   if (model.id === 'bedrock:nova-lite') return [model.id, 8];
   if (model.id === 'bedrock:nova-pro') return [model.id, 35];
   if (model.tier === 'frontier') {

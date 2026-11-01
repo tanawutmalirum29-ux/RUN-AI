@@ -12,7 +12,9 @@ export const GLOBAL_QUOTAS = Object.freeze({
   image: { day: 2, month: 8 },
   video: { day: 1, month: 1 },
 });
-const providerDefault = model => model.tier === 'frontier'
+const providerDefault = model => model.tier === 'native'
+  ? { day: 6, month: 24 }
+  : model.tier === 'frontier'
   // Premium models must not inherit the cheap-model allowance.
   ? (['openrouter:gpt-6-astra','openrouter:claude-fable-5.1'].includes(model.id)
       ? { day: 2, month: 8 } : { day: 3, month: 12 })

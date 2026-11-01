@@ -95,3 +95,24 @@ test('response adapters support Workers AI shapes',()=>{
  assert.equal(extractAnswer({choices:[{message:{content:'Hello'}}]}),'Hello');
  assert.throws(()=>extractAnswer({foo:'bar'}),/did not return text/);
 });
+
+test('AWS Nova Micro Native adapter has valid Bedrock Converse shape and GitHub context',async()=>{
+ const {buildNativeBedrockRequest,NATIVE_MODEL_ID,NATIVE_BEDROCK_MODEL}=await import('../shared/native-bedrock.mjs');
+ const result=buildNativeBedrockRequest([
+  {role:'assistant',text:'Welcome'},
+  {role:'user',text:'อยากสอน AI'},
+  {role:'assistant',text:'แก้ GitHub ได้'}
+ ],'สอน AI ใน GitHub อย่างไร');
+ assert.equal(NATIVE_MODEL_ID,'bedrock:run-ai-native');
+ assert.equal(NATIVE_BEDROCK_MODEL,'amazon.nova-micro-v1:0');
+ assert.equal(result.modelId,NATIVE_BEDROCK_MODEL);
+ assert.equal(result.messages[0].role,'user');
+ assert.equal(result.messages.at(-1).role,'user');
+ assert.ok(result.system[0].text.includes('GitHub'));
+ assert.equal(result.inferenceConfig.maxTokens,650);
+ assert.ok(result.knowledgeIds.length>=1);
+});
+test('AWS Native prompt rejects oversized requests before incurring cost',async()=>{
+ const {buildNativeBedrockRequest}=await import('../shared/native-bedrock.mjs');
+ assert.throws(()=>buildNativeBedrockRequest([], 'x'.repeat(4001)),/4000/);
+});

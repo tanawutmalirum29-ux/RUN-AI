@@ -85,3 +85,13 @@ test('frontier requests are charged deliberately conservative risk reservations'
   assert.equal(expensive.budgetItems.length,2);
   assert.throws(()=>spendPlan('chat','openrouter:gpt-6-astra','50','1500',now),/smaller/);
 });
+
+test('AWS Native uses cheap Nova Micro risk allowance and all shared atomic cost counters',()=>{
+ assert.equal(riskReservationCents('chat','bedrock:run-ai-native'),3);
+ const plan=spendPlan('chat','bedrock:run-ai-native',undefined,undefined,now);
+ assert.equal(plan.quotaItems.length,4);
+ assert.equal(plan.budgetItems.length,2);
+ assert.equal(plan.reservedCents,3);
+ assert.equal(plan.quotaItems[2].pk,'MODEL#DAY');
+ assert.ok(plan.quotaItems[2].sk.includes('bedrock:run-ai-native'));
+});

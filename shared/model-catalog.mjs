@@ -21,6 +21,7 @@ export const LOCAL_MODELS = Object.freeze([
 
 export const CLOUD_MODELS = Object.freeze([
   { id: DEFAULT_CLOUD_MODEL, label: 'Amazon Nova Lite', provider: 'bedrock', modelId: 'amazon.nova-lite-v1:0', supportsImage: true, description: 'รวดเร็ว รองรับรูปภาพและข้อความ', style: 'ทั่วไป' },
+  { id: 'bedrock:run-ai-native', label: 'RUN AI Native · AWS', provider: 'bedrock', modelId: 'amazon.nova-micro-v1:0', supportsImage: false, description: 'ผู้ช่วยประจำเว็บใช้ GitHub RAG/Few-shot บน Amazon Nova Micro', style: 'Native', tier: 'native' },
   { id: 'bedrock:nova-micro', label: 'Amazon Nova Micro', provider: 'bedrock', modelId: 'amazon.nova-micro-v1:0', supportsImage: false, description: 'ข้อความล้วน ค่าใช้จ่ายต่ำ', style: 'ประหยัด' },
   { id: 'bedrock:nova-pro', label: 'Amazon Nova Pro', provider: 'bedrock', modelId: 'amazon.nova-pro-v1:0', supportsImage: true, description: 'โมเดลใหญ่ขึ้น ต้องมีสิทธิ์ Bedrock', style: 'คุณภาพ' },
   { id: 'openrouter:qwen3-32b', label: 'Qwen3 · 32B', provider: 'openrouter', modelId: 'qwen/qwen3-32b', supportsImage: false, description: 'สนทนาหลายภาษาและเขียนโค้ด', style: 'ทั่วไป' },

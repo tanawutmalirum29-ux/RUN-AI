@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { walletKey, walletFromItem, validateAuthenticatedSub } from '../../../shared/wallet-policy.mjs';
 import { buildConversation } from '../../../shared/chat-history.mjs';
+import { buildNativeBedrockRequest, NATIVE_MODEL_ID } from '../../../shared/native-bedrock.mjs';
 import { DEFAULT_CLOUD_MODEL, selectCloudModel } from '../../../shared/model-catalog.mjs';
 import { GLOBAL_QUOTAS, allQuotaKeysForRead, quotaCounterKey, buildQuotaSnapshot } from '../../../shared/quota-policy.mjs';
 import { CONTROL_KEY, costGuardCounterKeys, buildGuardSnapshot, spendPlan } from '../../../shared/cost-guard.mjs';
@@ -344,6 +345,9 @@ export const handler = async (event: Event): Promise<string> => {
       configured: c.enabled && allowed,
       openrouterEnabled: c.openrouterEnabled && allowed,
       paidVideoEnabled: paidVideoEnabled() && c.enabled && allowed,
+      nativeEnabled: c.enabled && allowed,
+      nativeModel: NATIVE_MODEL_ID,
+      nativeEngine: 'AWS Bedrock Nova Micro',
       paidApiEnabled:allowed,
       anonymous: true,
       models:{ chat:'Multiple providers', image:'Stable Image Core', video:'Luma Ray2' },
@@ -360,6 +364,29 @@ export const handler = async (event: Event): Promise<string> => {
   }
   const sub = visitorId(p);
   if (action === 'video-status') return JSON.stringify(await getVideo(sub, p));
+  if (action === 'native-chat') {
+    // Keep the existing paid-AI stop switch, request idempotency, global
+    // allowance and dedicated Native quota. No Cloudflare credentials required.
+    assertReady(c);
+    if (p.image) throw new Error('RUN AI Native รองรับข้อความเท่านั้น');
+    const prompt = cleanPrompt(p.prompt,4000);
+    const native = buildNativeBedrockRequest(p.history,prompt);
+    await spend('chat',sub,p,NATIVE_MODEL_ID);
+    const response = await textAI.send(new ConverseCommand({
+      modelId:native.modelId,
+      system:native.system,
+      messages:native.messages as any,
+      inferenceConfig:native.inferenceConfig,
+    }));
+    const answer=(response.output?.message?.content || [])
+      .map(part=>part.text || '').join('\n').trim();
+    return JSON.stringify({
+      text:answer || '(โมเดลไม่ส่งข้อความกลับ)',
+      model:NATIVE_MODEL_ID,
+      engine:'AWS Bedrock',
+      knowledgeIds:native.knowledgeIds,
+    });
+  }
   if (action === 'chat') {
     const prompt = cleanPrompt(p.prompt, 6000);
     const chosen = selectCloudModel(p.model ?? DEFAULT_CLOUD_MODEL);
