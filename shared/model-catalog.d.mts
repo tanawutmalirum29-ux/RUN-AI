@@ -14,6 +14,7 @@ export interface CloudModel {
   readonly supportsImage: boolean;
   readonly description: string;
   readonly style: string;
+  readonly tier?: 'frontier';
 }
 export declare const DEFAULT_LOCAL_MODEL: string;
 export declare const DEFAULT_CLOUD_MODEL: string;
