@@ -142,11 +142,20 @@ export default function App({ user, signOut }) {
   const liveQuota = cloudStatus?.quota;
   const chatGlobalQuota = liveQuota?.global?.chat;
   const selectedQuota = liveQuota?.models?.[apiModel];
+  const nativeAWSQuota = liveQuota?.models?.['bedrock:run-ai-native'];
   const costGuard = cloudStatus?.costGuard;
   const costDisabled = !costGuard || costGuard.enabled !== true;
   const riskCents = costGuard?.remainingCents ?? 0;
   const displayUSD = cents => '$' + (Number(cents || 0)/100).toFixed(2);
   const chatRiskCents = riskReservationCents('chat',apiModel);
+  const nativeCloudflareReady = nativeConfigured && nativeInfo?.ready === true;
+  const nativeAWSReady = cloudConfigured && cloudStatus?.nativeEnabled === true;
+  const nativeRiskCents = riskReservationCents('chat','bedrock:run-ai-native');
+  const nativeAWSBlocked = !nativeAWSReady || !nativeAWSQuota || !chatGlobalQuota ||
+    nativeAWSQuota.remaining <= 0 || chatGlobalQuota.remaining <= 0 ||
+    costDisabled || riskCents < nativeRiskCents;
+  const nativeBlocked = !nativeCloudflareReady && nativeAWSBlocked;
+  const nativeProvider = nativeCloudflareReady ? 'Cloudflare' : 'AWS Bedrock';
   const chatQuotaBlocked = !chatGlobalQuota || !selectedQuota ||
     chatGlobalQuota.remaining <= 0 || selectedQuota.remaining <= 0 ||
     costDisabled || riskCents < chatRiskCents;
@@ -193,8 +202,8 @@ export default function App({ user, signOut }) {
   }
   async function sendChat(text = chatText) {
     if (chatSending.current || busy || modelLoading) return;
-    if (mode === 'native' && (!nativeConfigured || nativeInfo?.ready !== true)) {
-      notify('RUN AI Native ยังไม่พร้อม: ต้อง Deploy Cloudflare Worker และตั้ง VITE_RUN_AI_NATIVE_URL');
+    if (mode === 'native' && nativeBlocked) {
+      notify('RUN AI Native ไม่พร้อม: ตรวจสิทธิ์ AWS Bedrock Nova Micro โควตาและวงเงิน หรือการเชื่อม Cloudflare');
       return;
     }
     if (!text.trim() && !attachment) return;
@@ -235,7 +244,10 @@ export default function App({ user, signOut }) {
           throw new Error('RUN AI Native รุ่นแรกรองรับข้อความเท่านั้น ไม่รองรับรูปหรือวิดีโอ');
         if ((prompt+textFile).length > 4000)
           throw new Error('ข้อความที่ส่งให้ Native รวมไฟล์แล้วต้องไม่เกิน 4,000 ตัวอักษร');
-        const res = await nativeChat(prompt+textFile,prior);
+        const res = nativeCloudflareReady
+          ? await nativeChat(prompt+textFile,prior)
+          : await runCloud('native-chat',{prompt:prompt+textFile,history:prior});
+
         answer = res.text;
       } else {
         const image = file && (file.type.startsWith('image/') || file.type.startsWith('video/')) ? await photoBytes(file) : '';
@@ -249,7 +261,7 @@ export default function App({ user, signOut }) {
     } catch (e) {
       setMessages(x => [...x, { role: 'assistant', text: 'ไม่สำเร็จ: ' + e.message, error: true, time: Date.now() }]);
     } finally {
-      if (mode === 'cloud') refreshQuota().catch(()=>{});
+      if (mode === 'cloud' || (mode === 'native' && !nativeCloudflareReady)) refreshQuota().catch(()=>{});
       chatSending.current = false;
       setBusy('');
     }
@@ -338,16 +350,27 @@ export default function App({ user, signOut }) {
         </>}
         {page === 'chat' && <div className="chat-page">
           <div className="section-head chat-heading"><div><p className="eyebrow">INTELLIGENCE / CHAT</p><h1>AI Conversation <span className="title-sparkle">✦</span></h1><p className="subtle">ถามเรื่องอะไรก็ได้ ส่งภาพให้วิเคราะห์ หรือส่งไฟล์ข้อความประกอบ</p></div><button className="btn ghost small" onClick={clearChat}><SquarePen size={16}/> เริ่มแชตใหม่</button></div>
-          <div className="chat-toolbar"><div className="tabs">{[['browser','Browser AI · ฟรี'],['native','RUN AI Native'],['cloud','Cloud / API']].map(([v,t]) => <button key={v} disabled={!!busy || modelLoading} className={mode===v ? 'active':''} onClick={() => setMode(v)}>{t}</button>)}</div><span className="model-hint">{mode==='browser'?'ประมวลผลด้วย WebGPU':mode==='native'?'โมเดลบน Cloudflare · สอนด้วย GitHub':'API ผ่าน AWS Lambda'}</span></div>
+          <div className="chat-toolbar"><div className="tabs">{[['browser','Browser AI · ฟรี'],['native','RUN AI Native'],['cloud','Cloud / API']].map(([v,t]) => <button key={v} disabled={!!busy || modelLoading} className={mode===v ? 'active':''} onClick={() => setMode(v)}>{t}</button>)}</div><span className="model-hint">{mode==='browser'?'ประมวลผลด้วย WebGPU':mode==='native'?('สอนด้วย GitHub · รันผ่าน '+nativeProvider):'API ผ่าน AWS Lambda'}</span></div>
           {mode==='native' ? <div className="model-picker native-ai-panel">
-            <div className="model-picker-head"><label>RUN AI Native · AI ประจำเว็บ</label><span className="model-picker-provider">Gemma 4 · Cloudflare Workers AI</span></div>
+            <div className="model-picker-head"><label>RUN AI Native · AI ประจำเว็บ</label><span className="model-picker-provider">{nativeCloudflareReady?'Gemma 4 · Cloudflare Workers AI':'Amazon Nova Micro · AWS Bedrock'}</span></div>
             <div className="model-picker-detail"><span className="model-style">GitHub-taught</span><span>ข้อมูลและตัวอย่างคำตอบจาก GitHub ด้วย RAG/Few-shot ยังไม่ใช่การ Fine-tune น้ำหนักโมเดล</span></div>
-            <div className={'model-picker-note '+(!nativeInfo?.ready?'not-ready':'')}><Cloud size={15}/>
-              {nativeInfo?.ready
-                ? <span>พร้อมใช้งานผ่าน Cloudflare · ข้อมูล {nativeInfo.knowledgeCount} เรื่อง · ตัวอย่าง {nativeInfo.exampleCount} ชุด</span>
-                : <span>{nativeInfo?.error || 'ยังไม่เชื่อม Cloudflare Worker: ต้องตั้ง VITE_RUN_AI_NATIVE_URL'}</span>}
+            <div className={'model-picker-note '+(nativeBlocked?'not-ready':'')}><Cloud size={15}/>
+              {nativeCloudflareReady
+                ? <span>Cloudflare พร้อมใช้งาน · ข้อมูล {nativeInfo.knowledgeCount} เรื่อง · ตัวอย่าง {nativeInfo.exampleCount} ชุด</span>
+                : nativeAWSReady
+                  ? <span>เชื่อม AWS Bedrock แล้ว · สอนด้วย GitHub · มีโควตาและค่าใช้จ่ายตามการเรียกจริง</span>
+                  : <span>ยังรอ Backend AWS หรือผู้ดูแลปิด Cloud AI อยู่ · Native ใช้ AWS ได้โดยไม่ต้องมี Cloudflare</span>}
             </div>
-            <p className="micro-note">ใช้ฟรีภายใต้โควตา Cloudflare Workers AI (10,000 Neurons/วัน บนแผน Free) ไม่ใช่ 10,000 ข้อความ และไม่มีข้อมูลจำนวนคงเหลือแบบสดใน API นี้</p>
+            {nativeCloudflareReady
+              ? <p className="micro-note">ใช้โควตาฟรี Cloudflare ตามเงื่อนไขบัญชี ไม่ใช้ AWS Bedrock ในโหมดนี้</p>
+              : <div className="quota-native-details">
+                  <div className="quota-grid">
+                    <span>RUN AI Native เหลือ <b>{nativeAWSQuota?.remaining ?? '—'} ครั้ง</b><small>วันนี้ {nativeAWSQuota?.day.remaining ?? '—'}/{nativeAWSQuota?.day.limit ?? '—'} · เดือน {nativeAWSQuota?.month.remaining ?? '—'}/{nativeAWSQuota?.month.limit ?? '—'}</small></span>
+                    <span>แชต AWS/API รวม <b>{chatGlobalQuota?.remaining ?? '—'} ครั้ง</b><small>วันนี้ {chatGlobalQuota?.day.remaining ?? '—'}/{chatGlobalQuota?.day.limit ?? '—'} · เดือน {chatGlobalQuota?.month.remaining ?? '—'}/{chatGlobalQuota?.month.limit ?? '—'}</small></span>
+                  </div>
+                  <small className="quota-reset">กันงบประมาณการ {displayUSD(nativeRiskCents)}/ครั้ง · งบรวมคงเหลือ {costGuard?displayUSD(costGuard.remainingCents):'—'} · ไม่ใช่ค่า AWS Billing จริง</small>
+                  <p className="micro-note">Nova Micro มีค่าใช้จ่ายตามโทเค็น ผ่าน AWS Lambda เดิม ไม่ต้องมี GPU เครื่องคุณหรือ Cloudflare</p>
+                </div>}
             <a className="mini-link" href="https://github.com/tanawutmalirum29-ux/RUN-AI/blob/main/training/native-ai/README.md" target="_blank" rel="noreferrer">เปิดคู่มือสอน AI ผ่าน GitHub</a>
           </div> : <div className="model-picker">
             <div className="model-picker-head"><label htmlFor="run-ai-model">เลือกโมเดล AI</label><span className="model-picker-provider">{mode==='browser'?'รันบนอุปกรณ์ · ไม่มีค่า API':'รันผ่าน API · ใช้โควตารวมของเว็บ'}</span></div>
@@ -357,7 +380,7 @@ export default function App({ user, signOut }) {
               {mode==='browser'
                 ? LOCAL_MODELS.map(m=><option key={m.id} value={m.id}>{m.label} · GPU ≈ {(m.vramMB/1024).toFixed(1)} GB{m.style==='เปิดกว้าง'?' · Open':''}</option>)
                 : <>
-                    <optgroup label="Amazon Bedrock">{CLOUD_MODELS.filter(m=>m.provider==='bedrock').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
+                    <optgroup label="Amazon Bedrock">{CLOUD_MODELS.filter(m=>m.provider==='bedrock'&&m.tier!=='native').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
                     <optgroup label="FRONTIER · GPT / Claude / Gemini / Grok">{CLOUD_MODELS.filter(m=>m.tier==='frontier').map(m=><option key={m.id} value={m.id}>{m.label} · Premium</option>)}</optgroup>
                     <optgroup label="OpenRouter · ทั่วไป">{CLOUD_MODELS.filter(m=>m.provider==='openrouter'&&m.style!=='Uncensored'&&m.tier!=='frontier').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
                     <optgroup label="Uncensored · API (มีข้อจำกัดผู้ให้บริการ)">{CLOUD_MODELS.filter(m=>m.style==='Uncensored').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
@@ -397,7 +420,7 @@ export default function App({ user, signOut }) {
             <div ref={chatEnd}/>
           </div>
           {messages.length < 3 && <div className="suggestions">{starters.map(x => <button key={x} onClick={() => sendChat(x)}>{x} <ArrowRight size={14}/></button>)}</div>}
-          <div className="composer">{attachment && <div className="attachment-chip"><File size={15}/><span>{attachment.name}</span><button onClick={() => setAttachment(null)} aria-label="ลบไฟล์"><X size={14}/></button></div>}<textarea rows="2" value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey){e.preventDefault();sendChat();} }} placeholder="พิมพ์ข้อความถึง RUN AI... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"/><div className="composer-bottom"><div className="row"><button className="icon-button" title="แนบรูป วิดีโอ หรือไฟล์" onClick={() => fileRef.current?.click()}><Plus size={20}/></button><button className="icon-button" title="พูดเป็นข้อความ" onClick={recordVoice}><Mic size={19} className={micActive ? 'listening':''}/></button><span className="subtle composer-hint">ไฟล์อยู่ในเครื่องจนกว่าจะส่งไปยัง AI</span></div><button className="send-button" disabled={!!busy || modelLoading || ((mode==='cloud' && (chatQuotaBlocked || !providerReady)) || (mode==='native' && (!nativeConfigured || !nativeInfo?.ready))) || (!chatText.trim() && !attachment)} onClick={() => sendChat()}>{busy==='chat'?<LoaderCircle className="spin" size={19}/>:<Send size={18}/>}</button></div></div>
+          <div className="composer">{attachment && <div className="attachment-chip"><File size={15}/><span>{attachment.name}</span><button onClick={() => setAttachment(null)} aria-label="ลบไฟล์"><X size={14}/></button></div>}<textarea rows="2" value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey){e.preventDefault();sendChat();} }} placeholder="พิมพ์ข้อความถึง RUN AI... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"/><div className="composer-bottom"><div className="row"><button className="icon-button" title="แนบรูป วิดีโอ หรือไฟล์" onClick={() => fileRef.current?.click()}><Plus size={20}/></button><button className="icon-button" title="พูดเป็นข้อความ" onClick={recordVoice}><Mic size={19} className={micActive ? 'listening':''}/></button><span className="subtle composer-hint">ไฟล์อยู่ในเครื่องจนกว่าจะส่งไปยัง AI</span></div><button className="send-button" disabled={!!busy || modelLoading || ((mode==='cloud' && (chatQuotaBlocked || !providerReady)) || (mode==='native' && nativeBlocked)) || (!chatText.trim() && !attachment)} onClick={() => sendChat()}>{busy==='chat'?<LoaderCircle className="spin" size={19}/>:<Send size={18}/>}</button></div></div>
         </div>}
         {page === 'image' && <><div className="section-head"><div><p className="eyebrow">GENERATIVE / IMAGE</p><h1>Image Studio</h1><p className="subtle">สร้างภาพจริงด้วย Stable Image Core บน Amazon Bedrock</p></div><span className="model-pill"><Sparkles size={15}/> Stable Image Core</span></div>
           <div className="studio-grid"><div className="studio-form"><div className="card-panel"><h3>อธิบายภาพที่ต้องการ</h3><p className="subtle">ยิ่งระบุรายละเอียดชัด ผลลัพธ์ยิ่งตรงกับจินตนาการ</p><PromptInput value={imagePrompt} onChange={setImagePrompt} rows={6} placeholder="ตัวอย่าง: เมืองลอยฟ้าเหนือเมฆในยามเย็น แสงทองส่องผ่านหอคอย สไตล์แฟนตาซี cinematic, highly detailed..."/><label className="field-label">สิ่งที่ไม่ต้องการในภาพ</label><input className="form-input" value={imageNegative} onChange={e=>setImageNegative(e.target.value)} placeholder="blurry, low quality, extra limbs..."/><label className="field-label">อัตราส่วนภาพ</label><div className="choice-row">{['1:1','16:9','9:16','3:2','2:3'].map(v=><button key={v} className={'choice '+(imageAspect===v?'active':'')} onClick={()=>setImageAspect(v)}>{v}</button>)}</div><button className="btn primary full" disabled={!!busy || imageQuotaBlocked || !cloudStatus?.configured || !imagePrompt.trim()} onClick={generateImage}>{busy==='image'?<LoaderCircle className="spin" size={18}/>:<WandSparkles size={18}/>} สร้างภาพด้วย AI <ArrowRight size={16}/></button><p className="quota-line">{liveQuota?.global?.image ? `เหลือ ${liveQuota.global.image.remaining} ครั้ง · วันนี้ ${liveQuota.global.image.day.remaining}/${liveQuota.global.image.day.limit} · เดือนนี้ ${liveQuota.global.image.month.remaining}/${liveQuota.global.image.month.limit}` : 'ไม่สามารถอ่านโควตาจาก AWS ได้'}</p><p className="micro-note">โควตารวมทั้งเว็บไซต์ คำขอที่รับแล้วถูกนับแม้โมเดลล้มเหลว</p></div></div>

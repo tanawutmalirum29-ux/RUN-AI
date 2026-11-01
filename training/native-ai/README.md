@@ -1,47 +1,23 @@
-# RUN AI Native — GitHub-taught AI บน Cloudflare Free
+# RUN AI Native — ใช้ AWS Bedrock โดยไม่ต้องสมัคร Cloudflare
 
-โมดูลนี้นำข้อมูลและตัวอย่างใน GitHub ไปประกอบการตอบด้วย RAG/Few-shot
-โมเดลที่ประมวลผลจริงคือ Gemma 4 26B A4B บน Cloudflare Workers AI
-ไม่ใช่การ fine-tune น้ำหนักโมเดล และไม่ต้องใช้เครื่องผู้ใช้รันโมเดล
+**ค่าเริ่มต้น:** GitHub เป็นแหล่ง Persona/ความรู้/ตัวอย่าง (RAG/Few-shot), Amazon Nova Micro เป็นโมเดลประมวลผลผ่าน AWS Lambda ของ RUN-AI ไม่ใช่การฝึกน้ำหนักโมเดล และไม่ใช้โทรศัพท์/คอมของคุณรัน AI
 
-## วิธีสอน AI
+## เริ่มใช้งานบน AWS เดิม
 
-1. แก้ training/native-ai/knowledge.json เพื่อเพิ่มบทความสั้นที่ถูกต้อง
-2. แก้ training/native-ai/examples.json เพื่อเพิ่มคู่คำถาม/คำตอบตัวอย่าง
-3. แก้ training/native-ai/instructions.json เพื่อปรับบุคลิกและข้อกำหนด
-4. GitHub Actions ตรวจสอบชุดข้อมูลและการเรียก Worker ก่อน Deploy
-5. เมื่อ Deploy ผ่าน Worker ใหม่จะใช้ความรู้ที่อัปเดตทันที
+1. รวมโค้ดเข้า main แล้วรอ AWS Amplify Gen 2 Deploy Backend และ Frontend สำเร็จ
+2. ตรวจ AWS Bedrock ใน region us-east-1 ว่าสิทธิ์เรียก amazon.nova-micro-v1:0 พร้อมใช้งาน
+3. เปิด RUN-AI → AI Chat → RUN AI Native; ไม่ต้องใช้ Cloudflare API Key หรือเพิ่ม Environment Variable ใหม่
+4. AWS Native จำกัด **6 ครั้ง/วัน และ 24 ครั้ง/เดือนต่อเว็บไซต์** และยังหักโควตาแชตรวมเดิม 12 ครั้ง/วัน 60 ครั้ง/เดือน; ระบบ DynamoDB กันงบความเสี่ยงและป้องกันคำขอซ้ำ
+5. หาก Deploy ผ่านแต่ยังแชตไม่ได้ ให้ตรวจ RUN_AI_ENABLE_BEDROCK, Emergency Kill Switch และสิทธิ์ Bedrock พร้อมตรวจ CloudWatch Logs
 
-ห้ามนำ API Key, รหัสผ่าน, ข้อมูลส่วนตัว หรือข้อมูลที่ไม่มีสิทธิ์เผยแพร่ใส่ลง GitHub
+**ข้อควรทราบเรื่องราคา:** Amazon Bedrock เป็น Pay-as-you-go ตาม Input/Output Tokens หากบัญชีมีเครดิต AWS Free Tier อาจใช้เครดิตชำระได้ตามสิทธิ์และเงื่อนไข ไม่ใช่ AI ฟรีตลอดหรือจำกัดยอดบิลจริงโดยอัตโนมัติ. งาน Hosting, Lambda, AppSync และ DynamoDB อาจมีค่าใช้จ่ายอื่นเพิ่ม. ดู https://aws.amazon.com/bedrock/pricing/
 
-## ตั้งค่า Cloudflare หนึ่งครั้ง — ไม่ต้องใช้เครื่องคุณเป็นเซิร์ฟเวอร์
+## สอนความรู้ผ่าน GitHub
 
-1. สมัคร Cloudflare Free: https://dash.cloudflare.com/
-2. หา Account ID ใน Cloudflare Workers & Pages
-3. สร้าง API Token สิทธิ์ Deploy Cloudflare Workers แบบจำกัดเฉพาะบัญชี
-4. ใน GitHub RUN-AI → Settings → Secrets and variables → Actions เพิ่ม:
-   CLOUDFLARE_ACCOUNT_ID และ CLOUDFLARE_API_TOKEN
-5. GitHub → Actions → Native AI - Verify and Deploy → Run workflow
-6. เปิดผล Deploy แล้วคัดลอก URL Worker จริงจากผลลัพธ์
-7. AWS Amplify → Hosting → Environment variables เพิ่ม VITE_RUN_AI_NATIVE_URL
-   โดยใช้ URL Worker ของคุณ เช่น https://run-ai-native.YOUR-SUBDOMAIN.workers.dev
-8. Redeploy Frontend RUN-AI หลังแก้ตัวแปร
-9. เปิด RUN-AI → AI Chat → RUN AI Native
+แก้ `training/native-ai/knowledge.json` เพิ่มข้อมูลจริง และ `training/native-ai/examples.json` เพิ่มคำถาม/คำตอบตัวอย่าง; กฎหลักอยู่ `training/native-ai/instructions.json`. GitHub CI ตรวจชุดข้อมูลก่อนรวม. หลังแก้ไขให้ Deploy Backend ผ่าน Amplify เพื่อบรรจุความรู้ใหม่ลง Lambda (การแก้ GitHub เพียงอย่างเดียวโดยยังไม่ Deploy ไม่เปลี่ยนคำตอบบนเว็บไซต์).
 
-ก่อนเพิ่ม domain staging ให้แก้ค่า ALLOWED_ORIGINS ใน native-ai/wrangler.toml
-Origin checks ไม่ใช่ Authentication. Worker มี rate limiting 6 ครั้ง/นาทีต่อ IP แบบประมาณการ
-และโควตา Free Cloudflare AI เป็นเพดานสุดท้ายตามบัญชี Cloudflare
+อย่านำ API Key, รหัสผ่าน หรือข้อมูลส่วนตัวไปใส่ไฟล์ GitHub. Native ส่งข้อความของผู้ใช้ไปยัง AWS Bedrock. นี่คือ RAG/Few-shot ไม่ใช่ Fine-tuning หรือสร้างโมเดลใหม่เอง.
 
-## ขอบเขตและความปลอดภัย
+## Cloudflare (ทางเลือก ไม่จำเป็นต้องทำ)
 
-- Cloudflare Workers AI Free มี 10,000 Neurons/วัน ต่อบัญชี ซึ่งไม่เท่ากับ 10,000 คำถาม
-- Worker ถูกตั้งให้ทำงานบนแผน Free; หากอัปเกรด Paid อาจถูกเรียกเก็บเงินตามการใช้งาน
-- ภายในรุ่นแรกเป็นข้อความอย่างเดียว ไม่รองรับรูป/วิดีโอ
-- Browser ไม่เก็บ Cloudflare API Key; GitHub Secret ใช้สำหรับ Deploy เท่านั้น
-- แอป Native แยกจาก AWS Bedrock / OpenRouter; AWS Amplify ยังมีค่าโฮสต์ได้
-- ไม่มี API แสดง Neurons คงเหลือจริงต่อผู้ใช้ จึงไม่แสดงตัวเลขปลอม
-- Worker ส่งข้อความผู้ใช้ไปให้ Cloudflare ประมวลผล ผู้ใช้ควรหลีกเลี่ยงข้อมูลลับ
-- แก้ข้อมูลสอน AI ไม่ได้แปลว่า Fine-tuning โมเดลหลัก
-
-แหล่งอ้างอิง: https://developers.cloudflare.com/workers-ai/platform/pricing/
-และ https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/
+หากต้องการให้โหมด Native ใช้ Cloudflare Free ให้ Deploy `native-ai/worker.mjs` ด้วย `.github/workflows/native-ai-deploy.yml` โดยตั้ง GitHub Secrets `CLOUDFLARE_API_TOKEN` และ `CLOUDFLARE_ACCOUNT_ID`; จากนั้นเพิ่ม Amplify `VITE_RUN_AI_NATIVE_URL` ให้ชี้ Worker จริงและ Redeploy เว็บไซต์. หาก Worker ตอบ Health ว่าพร้อม ระบบจะเลือก Cloudflare ก่อน AWS; หากไม่ได้เชื่อม ระบบใช้ AWS เป็นค่าเริ่มต้น. การใช้ Cloudflare อยู่ภายใต้ 10,000 Neurons/วันบนบัญชี Free ตามเงื่อนไขผู้ให้บริการ โดยไม่รับประกันจำนวนแชต และต้องตรวจค่าใช้จ่ายส่วนอื่นแยกกัน.

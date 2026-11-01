@@ -19,7 +19,7 @@ export async function runCloud(action, payload = {}) {
   if (!client) client = generateClient({ authMode: 'apiKey' });
   // Idempotency token for all paid operations: retries cannot silently
   // spend the same request a second time when the token is reused.
-  const isPaid = action === 'chat' || action === 'image' || action === 'video-start';
+  const isPaid = action === 'chat' || action === 'native-chat' || action === 'image' || action === 'video-start';
   const requestId = isPaid ? (payload.requestId || crypto.randomUUID()) : undefined;
   const result = await client.mutations.runAI({
     action, payload: JSON.stringify({ ...payload, ...(requestId ? { requestId } : {}), visitorToken: guestToken() }),

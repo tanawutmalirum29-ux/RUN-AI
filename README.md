@@ -115,3 +115,8 @@ Verified provider listing pages:
 ## RUN AI Native
 
 GitHub-taught RAG/Few-shot assistant powered by Cloudflare Workers AI Free. Not model weight fine-tuning. No local WebGPU required and no AWS Bedrock inference for this mode. See [Native AI guide](training/native-ai/README.md) for training examples, Cloudflare GitHub Secrets, the GitHub deployment workflow and Amplify VITE_RUN_AI_NATIVE_URL. Until Cloudflare is configured, the Native tab stays visible but disabled. Cloudflare Free has 10,000 Neurons/day subject to provider terms; AWS Amplify hosting remains separately billable.
+
+
+## RUN AI Native AWS default
+
+RUN AI Native now uses **Amazon Nova Micro via the existing AWS Amplify Lambda/Bedrock** by default, with GitHub-managed knowledge and examples (RAG/Few-shot, **not weights fine-tuning**). Requires no Cloudflare account or OpenRouter API key. It shares the global paid chat pool and has its own server-enforced quota of 6 requests/day, 24/month plus the existing atomic risk reservations and kill switch. Inference is **paid AWS usage**, potentially covered only by eligible temporary AWS Free Tier credits; it is not permanently free. Optional Cloudflare Workers AI remains supported if separately configured and healthy. See [Native AI guide](training/native-ai/README.md).
