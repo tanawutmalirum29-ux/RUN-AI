@@ -1,0 +1,98 @@
+[
+  {
+    "id": "overview",
+    "title": "เว็บไซต์ RUN-AI",
+    "tags": [
+      "run-ai",
+      "เว็บไซต์",
+      "เครื่องมือ",
+      "สตูดิโอ"
+    ],
+    "text": "RUN-AI เป็นเว็บสตูดิโอทดลอง AI มี Chat, สร้างภาพ, วิดีโอ, คลังไฟล์ และแต่งภาพ ผู้ใช้เลือก Browser AI หรือ Cloud/API ผ่าน AWS/OpenRouter และ RUN AI Native ที่ทำงานบน Cloudflare ได้"
+  },
+  {
+    "id": "native",
+    "title": "RUN AI Native คืออะไร",
+    "tags": [
+      "native",
+      "gemma",
+      "cloudflare",
+      "github",
+      "เทรน"
+    ],
+    "text": "RUN AI Native ใช้โมเดลฐาน Gemma 4 26B บน Cloudflare Workers AI และดึงความรู้กับคำตอบตัวอย่างที่เก็บใน GitHub มาประกอบข้อความสั่ง AI เทคนิคนี้คือ Retrieval-Augmented Generation/Few-shot ไม่ได้แก้น้ำหนักโมเดลหรือสร้างโมเดลใหม่"
+  },
+  {
+    "id": "training",
+    "title": "สอน AI ประจำเว็บผ่าน GitHub",
+    "tags": [
+      "สอน",
+      "เทรน",
+      "ฝึก",
+      "ความรู้",
+      "GitHub"
+    ],
+    "text": "ผู้ดูแลเพิ่มข้อมูลที่ตรวจสอบแล้วใน training/native-ai/knowledge.json และตัวอย่างใน training/native-ai/examples.json รวมถึงปรับกฎใน instructions.json จากนั้น GitHub Actions ทดสอบและ Deploy Cloudflare Worker ทำให้รุ่นใหม่อ่านความรู้ที่แก้ไขได้โดยไม่ใช้เครื่องผู้ดูแล"
+  },
+  {
+    "id": "howto",
+    "title": "วิธีใช้ Native AI",
+    "tags": [
+      "ใช้",
+      "chat",
+      "แชต",
+      "free",
+      "ฟรี",
+      "เชื่อม"
+    ],
+    "text": "เลือก AI Chat แล้วกด RUN AI Native ใช้งานได้เมื่อ Cloudflare Worker Deploy แล้วและตั้งค่า VITE_RUN_AI_NATIVE_URL ของ AWS Amplify ไปยัง Worker ที่ถูกต้อง ต้องมีอินเทอร์เน็ต แต่ไม่ต้องมี WebGPU หรือดาวน์โหลดโมเดลบนมือถือ รุ่นแรกใช้แชตข้อความเท่านั้น"
+  },
+  {
+    "id": "free",
+    "title": "โควตาฟรี Cloudflare",
+    "tags": [
+      "ฟรี",
+      "โควตา",
+      "ราคา",
+      "neuron",
+      "จำกัด"
+    ],
+    "text": "Cloudflare Workers AI มีโควตา Free รวม 10,000 Neurons ต่อวันต่อบัญชี ไม่ใช่ 10,000 ข้อความ จำนวนคำถามขึ้นกับความยาวโมเดลและเนื้อหา เมื่อเต็มโควตาบริการฟรีจะปฏิเสธการเรียกต่อ ไม่มีตัวเลขโควตาคงเหลือให้ RUN AI Native แสดงสดในเวอร์ชันนี้"
+  },
+  {
+    "id": "compare",
+    "title": "Browser AI ต่างจาก RUN AI Native",
+    "tags": [
+      "browser",
+      "native",
+      "webgpu",
+      "device",
+      "เปรียบเทียบ"
+    ],
+    "text": "Browser AI ใช้ GPU และหน่วยความจำของเครื่องผู้ใช้ ต้องรองรับ WebGPU ส่วน RUN AI Native ประมวลผลบน Cloudflare Workers AI และใช้เน็ต ไม่ต้องโหลดโมเดลบนอุปกรณ์ ส่วน Cloud/API ของ AWS และ OpenRouter แยกอีกระบบและอาจมีค่าใช้จ่าย"
+  },
+  {
+    "id": "privacy",
+    "title": "ความเป็นส่วนตัวและคีย์ API",
+    "tags": [
+      "secret",
+      "api",
+      "key",
+      "ปลอดภัย",
+      "ความเป็นส่วนตัว"
+    ],
+    "text": "อย่าใส่ API Key รหัสผ่านและข้อมูลส่วนบุคคลลงไฟล์ GitHub หรือส่งในแชต RUN AI Native ข้อความผู้ใช้จะถูกส่งไป Cloudflare เพื่อประมวลผล ชุดความรู้บน GitHub เป็นข้อมูลที่เจ้าของโปรเจกต์เผยแพร่เอง"
+  },
+  {
+    "id": "aws",
+    "title": "ค่าใช้จ่ายเว็บไซต์ RUN-AI",
+    "tags": [
+      "aws",
+      "bill",
+      "งบ",
+      "โฮสต์",
+      "ค่าใช้จ่าย"
+    ],
+    "text": "RUN AI Native ใช้ Cloudflare Workers AI ฟรีภายในโควตา โดยไม่เรียก Bedrock หรือ OpenRouter แต่หน้าเว็บยังโฮสต์ AWS Amplify ซึ่งอาจมีค่า Hosting, Data transfer, Build และระบบอื่นของ RUN-AI ผู้ดูแลควรตรวจ AWS Billing แยกต่างหาก"
+  }
+]
