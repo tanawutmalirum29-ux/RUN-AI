@@ -21,7 +21,7 @@ export function buildNativeBedrockRequest(history,prompt) {
     modelId:NATIVE_BEDROCK_MODEL,
     system:[{text:system.content}],
     messages:bedrockMessages,
-    inferenceConfig:{maxTokens:650,temperature:0.5},
+    inferenceConfig:{maxTokens:850,temperature:0.6},
     knowledgeIds,
     exampleCount,
   };

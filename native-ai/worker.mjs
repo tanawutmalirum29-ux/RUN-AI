@@ -71,7 +71,7 @@ export default {
     try{
       const response=await env.AI.run(BASE_MODEL,{
         messages:context.messages,
-        max_tokens:650,temperature:0.5,stream:false,
+        max_tokens:850,temperature:0.6,stream:false,
         chat_template_kwargs:{enable_thinking:false},
       });
       return json({text:extractAnswer(response),model:'RUN AI Native',knowledgeIds:context.knowledgeIds},200,origin);

@@ -109,7 +109,7 @@ test('AWS Nova Micro Native adapter has valid Bedrock Converse shape and GitHub 
  assert.equal(result.messages[0].role,'user');
  assert.equal(result.messages.at(-1).role,'user');
  assert.ok(result.system[0].text.includes('GitHub'));
- assert.equal(result.inferenceConfig.maxTokens,650);
+ assert.equal(result.inferenceConfig.maxTokens,850);
  assert.ok(result.knowledgeIds.length>=1);
 });
 test('AWS Native prompt rejects oversized requests before incurring cost',async()=>{
@@ -125,4 +125,64 @@ test('GitHub teaching data describes AWS Bedrock as Native default, not required
  assert.match(guide.text,/ไม่ต้องมี Cloudflare/);
  assert.equal(instructions.model,'amazon.nova-micro-v1:0');
  assert.ok(examples.some(x=>x.input.includes('Cloudflare') && x.output.includes('ไม่จำเป็น')));
+});
+
+test('ordinary greetings, creativity and science do not inject website manual',async()=>{
+ const {isSiteQuestion,classifyIntent}=await import('../native-ai/rag.mjs');
+ assert.equal(isSiteQuestion('ทำไมท้องฟ้าสีฟ้า'),false);
+ assert.equal(classifyIntent('สวัสดี วันนี้เป็นไง'),'greeting');
+ for(const question of ['สวัสดีครับ วันนี้เป็นไง','ช่วยแต่งนิยายแฟนตาซี','ทำไมท้องฟ้าสีฟ้า']){
+  const result=buildNativeMessages([],question);
+  assert.deepEqual(result.knowledgeIds,[]);
+  assert.ok(!result.messages[0].content.includes('บริบทเฉพาะ RUN-AI จาก GitHub'));
+  assert.ok(result.exampleCount>=1,question);
+ }
+});
+test('topic-specific website questions receive relevant GitHub knowledge',()=>{
+ const result=buildNativeMessages([],'RUN AI Native ใช้ AWS เสียเงินไหม');
+ assert.ok(result.knowledgeIds.length>0);
+ assert.ok(result.knowledgeIds.some(id=>['native','free','aws','howto'].includes(id)));
+ assert.ok(result.messages[0].content.includes('บริบทเฉพาะ RUN-AI'));
+});
+test('site follow-ups inherit context, unrelated new questions do not',()=>{
+ const history=[
+  {role:'user',text:'RUN AI Native ใช้ AWS หรือ Cloudflare'},
+  {role:'assistant',text:'ปัจจุบันใช้ AWS Bedrock เป็นค่าเริ่มต้น'},
+ ];
+ const followup=buildNativeMessages(history,'แล้วเสียเงินไหม');
+ assert.ok(followup.knowledgeIds.length>0);
+ assert.deepEqual(buildNativeMessages(history,'อธิบายแรงโน้มถ่วง').knowledgeIds,[]);
+});
+test('teaching dataset covers diverse situations and maintains natural styles',()=>{
+ assert.ok(examples.length>=45);
+ const categories=new Set(examples.map(x=>x.category));
+ for(const category of ['greeting','emotional','learning','coding','creative','writing','planning','comparison','reasoning','context']){
+  assert.ok(categories.has(category),category);
+ }
+ assert.ok(retrieveExamples('สวัสดี วันนี้สบายดีไหม').some(x=>x.category==='greeting'));
+ assert.ok(retrieveExamples('ช่วยเขียนโค้ด JavaScript').some(x=>x.category==='coding'));
+ assert.ok(retrieveExamples('ช่วยแต่งนิยายลึกลับ').some(x=>x.category==='creative'));
+});
+test('system remains bounded and history keeps valid alternating roles',()=>{
+ const output=buildNativeMessages([
+  {role:'assistant',text:'Welcome'},
+  {role:'user',text:'ช่วยเขียนโค้ด'},
+  {role:'assistant',text:'ได้เลย'}
+ ],'แก้บั๊ก JavaScript ได้ไหม');
+ assert.ok(output.messages[0].content.length<=8500);
+ assert.equal(output.messages[1].role,'user');
+ assert.equal(output.messages.at(-1).role,'user');
+ assert.deepEqual(output.knowledgeIds,[]);
+});
+test('AWS Native allows richer answers while preserving bounded cost',async()=>{
+ const {buildNativeBedrockRequest}=await import('../shared/native-bedrock.mjs');
+ const request=buildNativeBedrockRequest([],'ช่วยแต่งเรื่องสั้นแฟนตาซี');
+ assert.equal(request.inferenceConfig.maxTokens,850);
+ assert.deepEqual(request.knowledgeIds,[]);
+});
+test('invalid categories and duplicate training questions fail validation',()=>{
+ const duplicate=[...examples,{...examples[0]}];
+ const invalid=[...examples,{input:'คำถามตัวอย่างใหม่',output:'คำตอบตัวอย่างนี้เขียนไว้ทดสอบการตรวจหมวด',tags:['ตัวอย่าง'],category:'wrong'}];
+ assert.ok(validateTrainingData({instructions,knowledge,examples:duplicate}).some(e=>e.includes('duplicate input')));
+ assert.ok(validateTrainingData({instructions,knowledge,examples:invalid}).some(e=>e.includes('invalid')));
 });
