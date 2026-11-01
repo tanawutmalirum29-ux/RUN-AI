@@ -111,3 +111,7 @@ Verified provider listing pages:
 - https://openrouter.ai/anthropic/claude-fable-5.1
 - https://openrouter.ai/google/gemini-4-argon
 - https://openrouter.ai/x-ai/grok-4.7
+
+## RUN AI Native
+
+GitHub-taught RAG/Few-shot assistant powered by Cloudflare Workers AI Free. Not model weight fine-tuning. No local WebGPU required and no AWS Bedrock inference for this mode. See [Native AI guide](training/native-ai/README.md) for training examples, Cloudflare GitHub Secrets, the GitHub deployment workflow and Amplify VITE_RUN_AI_NATIVE_URL. Until Cloudflare is configured, the Native tab stays visible but disabled. Cloudflare Free has 10,000 Neurons/day subject to provider terms; AWS Amplify hosting remains separately billable.

@@ -1,0 +1,43 @@
+name: Native AI - Verify and Deploy
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native-ai/**'
+      - 'training/native-ai/**'
+      - 'shared/chat-history.mjs'
+      - '.github/workflows/native-ai-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify GitHub teaching data, RAG, Cloudflare endpoints and limits
+        run: node --test tests/native-ai.test.mjs
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip deployment until Cloudflare is connected
+        if: env.CF_TOKEN == '' || env.CF_ACCOUNT == ''
+        run: echo 'Cloudflare not connected. Add the two GitHub repository secrets before deployment.'
+      - name: Deploy RUN AI Native only after tests pass
+        if: env.CF_TOKEN != '' && env.CF_ACCOUNT != ''
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: native-ai
