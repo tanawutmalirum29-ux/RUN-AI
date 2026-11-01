@@ -74,3 +74,14 @@ test('risk model guard cannot be lifted by switching model IDs',()=>{
    assert.equal(plan.budgetItems[1].sk,'2026-11');
  }
 });
+
+test('frontier requests are charged deliberately conservative risk reservations',()=>{
+  assert.equal(riskReservationCents('chat','openrouter:gpt-6-astra'),75);
+  assert.equal(riskReservationCents('chat','openrouter:claude-fable-5.1'),75);
+  assert.equal(riskReservationCents('chat','openrouter:gpt-6-luna'),6);
+  assert.equal(riskReservationCents('chat','openrouter:gemini-4-argon'),35);
+  const expensive=spendPlan('chat','openrouter:gpt-6-astra',undefined,undefined,now);
+  assert.equal(expensive.reservedCents,75);
+  assert.equal(expensive.budgetItems.length,2);
+  assert.throws(()=>spendPlan('chat','openrouter:gpt-6-astra','50','1500',now),/smaller/);
+});

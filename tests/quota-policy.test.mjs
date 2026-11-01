@@ -67,3 +67,11 @@ test('new UTC day resets day usage without resetting monthly usage',()=>{
  assert.equal(snap.global.chat.day.used,0);
  assert.equal(snap.global.chat.month.used,25);
 });
+
+test('premium models have stricter allowance than standard models',()=>{
+  assert.deepEqual(CHAT_MODEL_QUOTAS['openrouter:gpt-6-astra'],{day:2,month:8});
+  assert.deepEqual(CHAT_MODEL_QUOTAS['openrouter:claude-fable-5.1'],{day:2,month:8});
+  assert.deepEqual(CHAT_MODEL_QUOTAS['openrouter:grok-4.7'],{day:3,month:12});
+  const snap=buildQuotaSnapshot({},now);
+  assert.equal(snap.models['openrouter:gpt-6-astra'].remaining,2);
+});

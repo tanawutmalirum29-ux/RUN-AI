@@ -87,3 +87,16 @@ test('simultaneous model loads serialize safely', async()=>{
   assert.equal(runtime.activeModelId,b.id);
   assert.deepEqual(events,['load:'+a.id,'unload:'+a.id,'load:'+b.id]);
 });
+
+test('frontier catalog contains verified major API families and uses OpenRouter only', () => {
+  const expected = ["openrouter:gpt-6-luna","openrouter:gpt-6.1-terra","openrouter:gpt-6.1-sol","openrouter:gpt-6-astra","openrouter:claude-sonnet-5.5","openrouter:claude-opus-5.5","openrouter:claude-fable-5.1","openrouter:gemini-4-argon","openrouter:grok-4.7"];
+  for (const id of expected) {
+    const model = selectCloudModel(id);
+    assert.equal(model.provider, 'openrouter');
+    assert.equal(model.tier, 'frontier');
+    assert.equal(model.supportsImage, true);
+    assert.ok(model.modelId.includes('/'));
+    assert.equal(cloudModelAvailable(model,{configured:true,openrouterEnabled:false}),false);
+  }
+  assert.equal(CLOUD_MODELS.filter(m=>m.tier==='frontier').length,expected.length);
+});

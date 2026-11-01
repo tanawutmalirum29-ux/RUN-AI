@@ -202,8 +202,10 @@ async function ask(sub: string, p: ActionPayload) {
         body: JSON.stringify({
           model: chosen.modelId,
           messages: toOpenRouterMessages(turns, image ? Buffer.from(image).toString('base64') : undefined),
-          temperature: 0.6,
-          max_tokens: 900,
+          // Some frontier reasoning models reject the temperature parameter.
+          // Premium chat gets a larger answer budget, but stays capped.
+          ...(chosen.tier === 'frontier' ? {} : { temperature: 0.6 }),
+          max_tokens: chosen.tier === 'frontier' ? 2000 : 900,
           stream: false,
         }),
         signal: abort.signal,

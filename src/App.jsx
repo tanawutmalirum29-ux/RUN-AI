@@ -330,13 +330,14 @@ export default function App({ user, signOut }) {
                 ? LOCAL_MODELS.map(m=><option key={m.id} value={m.id}>{m.label} · GPU ≈ {(m.vramMB/1024).toFixed(1)} GB{m.style==='เปิดกว้าง'?' · Open':''}</option>)
                 : <>
                     <optgroup label="Amazon Bedrock">{CLOUD_MODELS.filter(m=>m.provider==='bedrock').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
-                    <optgroup label="OpenRouter · ทั่วไป">{CLOUD_MODELS.filter(m=>m.provider==='openrouter'&&m.style!=='Uncensored').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
+                    <optgroup label="FRONTIER · GPT / Claude / Gemini / Grok">{CLOUD_MODELS.filter(m=>m.tier==='frontier').map(m=><option key={m.id} value={m.id}>{m.label} · Premium</option>)}</optgroup>
+                    <optgroup label="OpenRouter · ทั่วไป">{CLOUD_MODELS.filter(m=>m.provider==='openrouter'&&m.style!=='Uncensored'&&m.tier!=='frontier').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
                     <optgroup label="Uncensored · API (มีข้อจำกัดผู้ให้บริการ)">{CLOUD_MODELS.filter(m=>m.style==='Uncensored').map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>
                   </>}
             </select>
             <div className="model-picker-detail">
               <span className={'model-style '+((mode==='browser'?currentLocal.style:currentCloud.style)==='Uncensored'?'special':'')}>{mode==='browser'?currentLocal.style:currentCloud.style}</span>
-              <span>{mode==='browser'?currentLocal.description:currentCloud.description}</span>
+              <span>{mode==='browser'?currentLocal.description:currentCloud.description}{mode==='cloud'&&currentCloud.tier==='frontier'?' · เรียกผ่าน OpenRouter API (ต้องมีคีย์/เครดิต) · ใช้โควตา Premium ไม่ใช่ Browser AI':''}</span>
             </div>
             {mode==='browser'
               ? <div className="model-picker-note"><Monitor size={15}/>{modelLoading ? <span>{browserProgress || 'กำลังโหลดโมเดล...'}</span> : <span>ต้องมี WebGPU และหน่วยความจำ GPU ราว {(currentLocal.vramMB/1024).toFixed(1)} GB ขึ้นไป (โดยประมาณ); ครั้งแรกต้องดาวน์โหลดโมเดล</span>}</div>

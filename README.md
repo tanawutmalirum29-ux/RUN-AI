@@ -77,3 +77,37 @@ The existing **12 chat/day and 60 chat/month global web quota is SHARED between 
 - [Monetization roadmap](MONETIZATION_ROADMAP.md): stages and security gates for identity, wallets, checkout and launch.
 - Internal risk allowance defaults to $3/day and $15/month across the website. These are NOT actual AWS bills or guaranteed spending ceilings. Paid video is disabled by default.
 - No payment or credit sale is implemented. Do not accept payments until an authenticated credit ledger and verified payment webhooks are available.
+
+
+## Frontier AI models through OpenRouter
+
+The RUN-AI frontend offers nine additional optional API choices via its EXISTING
+OpenRouter connector (it does **not** host model weights and does **not** use
+your ChatGPT subscription or direct OpenAI/Anthropic/Google/xAI API keys):
+
+- OpenAI GPT-6 Astra, GPT-6.1 Sol, GPT-6.1 Terra, GPT-6 Luna
+- Anthropic Claude Fable 5.1, Opus 5.5, Sonnet 5.5
+- Google Gemini 4 Argon
+- xAI Grok 4.7
+
+OpenRouter must be enabled with RUN_AI_USE_OPENROUTER=1 and a
+server-only OPENROUTER_API_KEY in AWS Amplify Secrets. Availability and
+payments depend on this OpenRouter account, provider eligibility and balance.
+The app only offers text chat plus image analysis with these model adapters;
+it does NOT implement vendor-specific agent tools, realtime audio or direct
+browsing. Each premium call remains under the global 12/day and 60/month
+anonymous request cap AND a stricter premium per-model cap. The budget
+guard uses per-model risk reservation weights ($0.06–$0.75 per attempt);
+these are conservative internal risk units, NOT live API prices or an
+AWS invoice. If no provider key is configured, options appear unavailable.
+
+Verified provider listing pages:
+- https://openrouter.ai/openai/gpt-6-astra
+- https://openrouter.ai/openai/gpt-6.1-sol
+- https://openrouter.ai/openai/gpt-6.1-terra
+- https://openrouter.ai/openai/gpt-6-luna
+- https://openrouter.ai/anthropic/claude-opus-5.5
+- https://openrouter.ai/anthropic/claude-sonnet-5.5
+- https://openrouter.ai/anthropic/claude-fable-5.1
+- https://openrouter.ai/google/gemini-4-argon
+- https://openrouter.ai/x-ai/grok-4.7

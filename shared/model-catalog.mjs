@@ -35,6 +35,15 @@ export const CLOUD_MODELS = Object.freeze([
   {"id":"openrouter:dolphin3-mistral","label":"Dolphin 3.0 · Mistral 24B","provider":"openrouter","modelId":"cognitivecomputations/dolphin3.0-mistral-24b","supportsImage":false,"description":"Dolphin instruct สำหรับสนทนาและโค้ด","style":"เปิดกว้าง"},
   {"id":"openrouter:dolphin3-r1","label":"Dolphin 3.0 R1 · 24B","provider":"openrouter","modelId":"cognitivecomputations/dolphin3.0-r1-mistral-24b","supportsImage":false,"description":"Dolphin reasoning open-tuned","style":"เปิดกว้าง"},
   {"id":"openrouter:dolphin-llama70b","label":"Dolphin Llama 3 · 70B (Uncensored)","provider":"openrouter","modelId":"cognitivecomputations/dolphin-llama-3-70b","supportsImage":false,"description":"ผู้สร้างระบุเป็น uncensored ข้อจำกัดผู้ให้บริการยังมีผล","style":"Uncensored"},
+  { id: 'openrouter:gpt-6-luna', label: 'GPT-6 Luna', provider: 'openrouter', modelId: 'openai/gpt-6-luna', supportsImage: true, description: 'ข้อความเร็ว ประหยัด เหมาะแชตและงานทั่วไป', style: 'เรือธง', tier: 'frontier' },
+  { id: 'openrouter:gpt-6.1-terra', label: 'GPT-6.1 Terra', provider: 'openrouter', modelId: 'openai/gpt-6.1-terra', supportsImage: true, description: 'งานเขียน โค้ด และวิเคราะห์ภาพอย่างมีประสิทธิภาพ', style: 'เรือธง', tier: 'frontier' },
+  { id: 'openrouter:gpt-6.1-sol', label: 'GPT-6.1 Sol', provider: 'openrouter', modelId: 'openai/gpt-6.1-sol', supportsImage: true, description: 'วิเคราะห์เชิงลึก โค้ด และงานซับซ้อน', style: 'เรือธง', tier: 'frontier' },
+  { id: 'openrouter:gpt-6-astra', label: 'GPT-6 Astra', provider: 'openrouter', modelId: 'openai/gpt-6-astra', supportsImage: true, description: 'รุ่นเรือธงสำหรับงานซับซ้อนมาก มีค่า API สูง', style: 'เรือธง', tier: 'frontier' },
+  { id: 'openrouter:claude-sonnet-5.5', label: 'Claude Sonnet 5.5', provider: 'openrouter', modelId: 'anthropic/claude-sonnet-5.5', supportsImage: true, description: 'เขียนโค้ดและงานเอกสารระดับมืออาชีพ', style: 'เรือธง', tier: 'frontier' },
+  { id: 'openrouter:claude-opus-5.5', label: 'Claude Opus 5.5', provider: 'openrouter', modelId: 'anthropic/claude-opus-5.5', supportsImage: true, description: 'วิเคราะห์ โค้ด และงานหนักระดับเรือธง', style: 'เรือธง', tier: 'frontier' },
+  { id: 'openrouter:claude-fable-5.1', label: 'Claude Fable 5.1', provider: 'openrouter', modelId: 'anthropic/claude-fable-5.1', supportsImage: true, description: 'งานใช้เหตุผลยาวและซับซ้อน อาจมีข้อกำหนดการเข้าถึง', style: 'เรือธง', tier: 'frontier' },
+  { id: 'openrouter:gemini-4-argon', label: 'Gemini 4 Argon', provider: 'openrouter', modelId: 'google/gemini-4-argon', supportsImage: true, description: 'บริบทขนาดใหญ่ หลายภาษา และอ่านภาพ', style: 'เรือธง', tier: 'frontier' },
+  { id: 'openrouter:grok-4.7', label: 'Grok 4.7', provider: 'openrouter', modelId: 'x-ai/grok-4.7', supportsImage: true, description: 'งานโค้ด ความรู้ และการให้เหตุผล', style: 'เรือธง', tier: 'frontier' },
 ]);
 
 export function getLocalModel(id) {

@@ -12,9 +12,13 @@ export const GLOBAL_QUOTAS = Object.freeze({
   image: { day: 2, month: 8 },
   video: { day: 1, month: 1 },
 });
-const providerDefault = model => model.provider === 'bedrock'
-  ? model.id === 'bedrock:nova-pro' ? { day: 2, month: 8 } : { day: 8, month: 30 }
-  : model.style === 'Uncensored' ? { day: 3, month: 9 } : { day: 5, month: 20 };
+const providerDefault = model => model.tier === 'frontier'
+  // Premium models must not inherit the cheap-model allowance.
+  ? (['openrouter:gpt-6-astra','openrouter:claude-fable-5.1'].includes(model.id)
+      ? { day: 2, month: 8 } : { day: 3, month: 12 })
+  : model.provider === 'bedrock'
+    ? (model.id === 'bedrock:nova-pro' ? { day: 2, month: 8 } : { day: 8, month: 30 })
+    : model.style === 'Uncensored' ? { day: 3, month: 9 } : { day: 5, month: 20 };
 export const CHAT_MODEL_QUOTAS = Object.freeze(Object.fromEntries(
   CLOUD_MODELS.map(model => [model.id, Object.freeze(providerDefault(model))])
 ));

@@ -18,6 +18,21 @@ const weights = Object.fromEntries(CLOUD_MODELS.map(model => {
   if (model.id === 'bedrock:nova-micro') return [model.id, 3];
   if (model.id === 'bedrock:nova-lite') return [model.id, 8];
   if (model.id === 'bedrock:nova-pro') return [model.id, 35];
+  if (model.tier === 'frontier') {
+    const frontierRisk = {
+      "openrouter:gpt-6-luna": 6,
+      "openrouter:gpt-6.1-terra": 20,
+      "openrouter:gpt-6.1-sol": 35,
+      "openrouter:gpt-6-astra": 75,
+      "openrouter:claude-sonnet-5.5": 35,
+      "openrouter:claude-opus-5.5": 55,
+      "openrouter:claude-fable-5.1": 75,
+      "openrouter:gemini-4-argon": 35,
+      "openrouter:grok-4.7": 25
+    };
+    // Conservative per-call risk reservations, NOT model prices or actual billing.
+    return [model.id, frontierRisk[model.id]];
+  }
   if (model.modelId.endsWith(':free')) return [model.id, 2];
   if (model.style === 'Uncensored') return [model.id, 25];
   return [model.id, 20];
