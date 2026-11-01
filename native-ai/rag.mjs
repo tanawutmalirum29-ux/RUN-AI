@@ -50,8 +50,12 @@ function lastSiteTopic(history) {
  if(!Array.isArray(history))return '';
  const users=history.slice(-10)
    .filter(x=>x?.role==='user' && typeof x.text==='string' && !x.error);
- for(let i=users.length-1;i>=0;i--)
-   if(isSiteQuestion(users[i].text))return users[i].text.slice(0,300);
+ for(let i=users.length-1;i>=0;i--) {
+   const previous=users[i].text.trim();
+   if(isSiteQuestion(previous))return previous.slice(0,300);
+   // A new unrelated question breaks the website-topic chain.
+   if(!FOLLOWUP.test(previous))break;
+ }
  return '';
 }
 function relevance(query,item,kind){

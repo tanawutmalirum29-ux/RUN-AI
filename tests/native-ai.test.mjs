@@ -186,3 +186,14 @@ test('invalid categories and duplicate training questions fail validation',()=>{
  assert.ok(validateTrainingData({instructions,knowledge,examples:duplicate}).some(e=>e.includes('duplicate input')));
  assert.ok(validateTrainingData({instructions,knowledge,examples:invalid}).some(e=>e.includes('invalid')));
 });
+
+test('an unrelated new user topic breaks stale RUN-AI RAG history',()=>{
+ const history=[
+  {role:'user',text:'RUN AI Native ทำงานผ่าน AWS ไหม'},
+  {role:'assistant',text:'ใช่'},
+  {role:'user',text:'อธิบายเรื่องแรงโน้มถ่วง'},
+  {role:'assistant',text:'เป็นแรงดึงดูด'},
+ ];
+ const next=buildNativeMessages(history,'แล้วมันเสียเงินไหม');
+ assert.deepEqual(next.knowledgeIds,[]);
+});
